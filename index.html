@@ -109,12 +109,6 @@ function view(){return document.getElementById('view')}
 
 /* ---------- BOOT ---------- */
 function renderError(e){root.innerHTML=`<div class="login"><div class="box"><div class="brand">${ROCKET}<div class="wm"><b>NAVE</b><span>Instituto · CRM</span></div></div><h1>Ups, algo falló al cargar</h1><p>${esc((e&&e.message)||e||'Error desconocido')}</p><button class="btn primary" style="width:100%" onclick="location.reload()">Reintentar</button><div class="alt"><a onclick="(async()=>{await sb.auth.signOut();location.reload()})()">Cerrar sesión y volver a entrar</a></div></div></div>`}
-if(!SUPABASE_URL||!SUPABASE_ANON_KEY){renderConfigNeeded()}
-else{try{sb=createClient(SUPABASE_URL,SUPABASE_ANON_KEY)
-  const{data:{session}}=await sb.auth.getSession()
-  if(session)await afterLogin(session);else renderLogin()
-  sb.auth.onAuthStateChange((_e,s)=>{if(!s)renderLogin()})
-}catch(e){console.error('boot',e);renderError(e)}}
 window.addEventListener('error',ev=>console.error('window error',ev.error||ev.message))
 function renderConfigNeeded(){root.innerHTML=`<div class="login"><div class="box"><div class="brand">${ROCKET}<div class="wm"><b>NAVE</b><span>Instituto · CRM</span></div></div><h1>Falta conectar Supabase</h1><p>Completá <code>SUPABASE_URL</code> y <code>SUPABASE_ANON_KEY</code> arriba de <code>index.html</code> (Supabase → Settings → API) y volvé a deployar. El SQL está en <code>schema.sql</code>.</p></div></div>`}
 
@@ -423,5 +417,13 @@ async function renderCalendario(){view().innerHTML=head('AGENDA','Calendario')+`
   const byDay={};items.forEach(i=>{(byDay[i.d]=byDay[i.d]||[]).push(i)})
   const days=Object.keys(byDay)
   document.getElementById('ag').innerHTML=days.length?days.map(d=>`<div class="day">${new Date(d+'T00:00').toLocaleDateString('es',{weekday:'long',day:'2-digit',month:'long'})}</div>${byDay[d].map(i=>`<div class="ev"><span class="tg">${i.tg}</span><span>${esc(i.t)}</span></div>`).join('')}`).join(''):`<div class="empty">No hay clases ni seguimientos agendados.</div>`}
+
+/* ================= BOOT (al final: después de todas las declaraciones, para evitar TDZ) ================= */
+if(!SUPABASE_URL||!SUPABASE_ANON_KEY){renderConfigNeeded()}
+else{try{sb=createClient(SUPABASE_URL,SUPABASE_ANON_KEY)
+  const{data:{session}}=await sb.auth.getSession()
+  if(session)await afterLogin(session);else renderLogin()
+  sb.auth.onAuthStateChange((_e,s)=>{if(!s)renderLogin()})
+}catch(e){console.error('boot',e);renderError(e)}}
 </script>
 </body></html>
