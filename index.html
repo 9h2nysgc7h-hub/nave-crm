@@ -1,0 +1,424 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>NAVE CRM</title>
+<style>
+  :root{
+    --bg:#07080b;--bg-2:#0b0d12;--surface:#0f1219;--surface-2:#141824;--card:#141824;
+    --line:#20242f;--line-2:#2a2f3c;--ink:#eef1f6;--muted:#8b93a3;--faint:#5c6472;
+    --accent:#46cfe6;--accent-dim:#2b8fa1;--accent-glow:rgba(70,207,230,.16);
+    --fluido:#46e0a0;--potencial:#e0b24a;--leve:#7c8698;--danger:#f0654f;--good:#46e0a0;--warn:#e0b24a;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  button{font-family:inherit;cursor:pointer}a{color:var(--accent)}
+  .glow{position:fixed;top:-260px;left:50%;transform:translateX(-30%);width:900px;height:520px;background:radial-gradient(ellipse at center,var(--accent-glow),transparent 62%);pointer-events:none;z-index:0}
+  .btn{border:none;border-radius:9px;padding:9px 14px;font-size:13px;font-weight:650}
+  .btn.primary{background:var(--accent);color:#04121a}.btn.ghost{background:var(--surface);color:var(--ink);border:1px solid var(--line-2)}
+  .btn.danger{background:transparent;color:var(--danger);border:1px solid var(--line-2)}.btn:hover{filter:brightness(1.08)}
+  .inp,select,textarea{background:var(--surface);border:1px solid var(--line);border-radius:9px;color:var(--ink);padding:9px 11px;font-size:13.5px;font-family:inherit;outline:none;width:100%}
+  .inp:focus,select:focus,textarea:focus{border-color:var(--accent)}::placeholder{color:var(--faint)}
+  .login{position:relative;z-index:1;min-height:100vh;display:grid;place-items:center;padding:20px}
+  .login .box{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:34px;width:100%;max-width:400px}
+  .login .brand{display:flex;align-items:center;gap:11px;margin-bottom:22px}
+  .login h1{font-size:20px;margin:0 0 4px}.login p{color:var(--muted);font-size:13.5px;margin:0 0 20px}
+  .login .field{margin-bottom:12px}.login label,.field label{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:5px}
+  .login .err{color:var(--danger);font-size:12.5px;margin-top:10px;min-height:16px}.login .alt{margin-top:14px;text-align:center;font-size:12.5px;color:var(--muted)}
+  #app{display:grid;grid-template-columns:236px 1fr;min-height:100vh;position:relative;z-index:1}
+  .side{background:var(--bg-2);border-right:1px solid var(--line);display:flex;flex-direction:column}
+  .brand{display:flex;align-items:center;gap:10px;padding:20px 18px 16px}.brand svg{width:26px;height:26px}
+  .brand .wm b{display:block;font-weight:800;font-size:15px;letter-spacing:.02em}.brand .wm span{font-family:var(--mono);font-size:9px;letter-spacing:.26em;color:var(--muted);text-transform:uppercase}
+  .nav{padding:6px 10px;overflow-y:auto;flex:1}.grp{font-family:var(--mono);font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);padding:14px 12px 6px}
+  .nav a{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:9px;color:var(--muted);text-decoration:none;font-size:13.5px;margin-bottom:1px;cursor:pointer}
+  .nav a .ic{width:16px;height:16px;opacity:.85;flex:none}.nav a:hover{background:var(--surface);color:var(--ink)}
+  .nav a.on{background:linear-gradient(90deg,var(--accent-glow),transparent);color:var(--ink);box-shadow:inset 2px 0 0 var(--accent)}
+  .me{border-top:1px solid var(--line);padding:12px 16px;display:flex;align-items:center;gap:10px}
+  .me .av{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--accent-dim),#5a4bd6);display:grid;place-items:center;font-size:12px;font-weight:700;color:#04121a}
+  .me .nm{font-size:12.5px;font-weight:600;line-height:1.2}.me .rl{font-family:var(--mono);font-size:9.5px;color:var(--faint)}.me .out{margin-left:auto;color:var(--faint);background:none;border:none;font-size:16px}
+  .main{overflow-y:auto;height:100vh}
+  .top{display:flex;align-items:flex-end;gap:16px;padding:26px 30px 14px;flex-wrap:wrap}
+  .top h1{margin:0;font-size:27px;font-weight:800;letter-spacing:-.02em}.top .sub{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.04em;margin-bottom:5px}
+  .grow{flex:1}
+  .funnel{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;padding:10px 30px 24px}
+  @media(max-width:1180px){.funnel{grid-template-columns:repeat(3,1fr)}}@media(max-width:720px){.funnel{grid-template-columns:repeat(2,1fr)}}
+  .fcell{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:22px 22px 20px;position:relative;overflow:hidden;min-height:132px}
+  .fcell::after{content:"";position:absolute;inset:0;background:radial-gradient(120% 90% at 100% 0,var(--accent-glow),transparent 55%);opacity:.5;pointer-events:none}
+  .fcell .ic2{position:absolute;right:18px;top:18px;width:18px;height:18px;color:var(--accent);opacity:.85}
+  .fcell .n{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em;line-height:1}
+  .fcell .l{font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin-top:10px}
+  .fcell .pct{font-family:var(--mono);font-size:11.5px;color:var(--accent);margin-top:12px}
+  .fcell .track{height:4px;border-radius:3px;background:var(--surface-2);margin-top:10px;overflow:hidden}.fcell .track>i{display:block;height:100%;background:var(--accent);border-radius:3px}
+  .tb{display:flex;gap:9px;align-items:center;padding:4px 30px 14px;flex-wrap:wrap}.search{min-width:230px;max-width:300px}
+  .pill{background:var(--surface);border:1px solid var(--line);color:var(--muted);border-radius:20px;padding:7px 13px;font-size:12px;cursor:pointer}.pill.on{border-color:var(--accent);color:var(--ink)}
+  select.pill{-webkit-appearance:none;appearance:none;width:auto}
+  .tablewrap{margin:0 30px 30px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);font-weight:600;padding:12px 14px;border-bottom:1px solid var(--line);background:var(--bg-2)}
+  tbody td{padding:15px 16px;border-bottom:1px solid var(--line);color:var(--muted);vertical-align:middle}tbody tr:last-child td{border-bottom:none}tbody tr.clk:hover{background:var(--surface-2);cursor:pointer}
+  .nm{color:var(--ink);font-weight:600}.sub2{font-size:11.5px;color:var(--faint)}
+  .chip{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:3px 8px;border-radius:20px}
+  .chip.fluido{color:var(--fluido);background:rgba(70,224,160,.12)}.chip.potencial{color:var(--potencial);background:rgba(224,178,74,.12)}.chip.leve{color:var(--leve);background:rgba(124,134,152,.14)}
+  .chip.pendiente{color:var(--warn);background:rgba(224,178,74,.12)}.chip.cobrado{color:var(--good);background:rgba(70,224,160,.12)}.chip.vencido{color:var(--danger);background:rgba(240,101,79,.12)}
+  .estado{display:inline-flex;align-items:center;gap:7px;color:var(--ink);font-size:12.5px}.dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}
+  .who{display:inline-flex;align-items:center;gap:7px}.who .a{width:22px;height:22px;border-radius:50%;background:#222838;display:grid;place-items:center;font-size:10px;color:var(--ink);font-weight:700}
+  .foot{display:flex;align-items:center;gap:12px;padding:12px 16px;border-top:1px solid var(--line);color:var(--faint);font-family:var(--mono);font-size:11px}
+  .pg{background:var(--surface-2);border:1px solid var(--line-2);border-radius:7px;color:var(--muted);padding:5px 10px;cursor:pointer;font-family:var(--mono);font-size:11px}.pg[disabled]{opacity:.4;cursor:default}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;z-index:60;overflow-y:auto}
+  .modal{background:var(--surface);border:1px solid var(--line);border-radius:18px;width:100%;max-width:540px;padding:22px;position:relative;z-index:61}.modal h2{margin:0 0 16px;font-size:18px}
+  .field{margin-bottom:13px}.row2{display:grid;grid-template-columns:1fr 1fr;gap:11px}.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:11px}@media(max-width:640px){.row2,.row3{grid-template-columns:1fr}}
+  .actions{display:flex;gap:9px;margin-top:8px;align-items:center}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px;margin:0 30px 20px}
+  .card h3{margin:0 0 4px;font-size:16px}.card .cdesc{color:var(--muted);font-size:13px;margin:0 0 16px}
+  .sechead{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:6px 0 12px}
+  .tabs{display:flex;gap:6px;padding:0 30px 14px}.tab{background:var(--surface);border:1px solid var(--line);color:var(--muted);border-radius:9px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer}.tab.on{background:var(--surface-2);color:var(--ink);border-color:var(--accent)}
+  .attend{display:flex;gap:8px}.clbtn{flex:1;padding:9px;border-radius:9px;border:1px solid var(--line-2);background:var(--surface);color:var(--muted);font-size:12.5px;cursor:pointer}.clbtn.yes{background:rgba(70,207,230,.15);border-color:var(--accent-dim);color:var(--accent)}
+  .bars{display:flex;align-items:flex-end;gap:18px;height:180px;padding:16px 6px 0}.bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;justify-content:flex-end;height:100%}
+  .bar .col{width:60%;max-width:64px;background:linear-gradient(180deg,var(--accent),var(--accent-dim));border-radius:8px 8px 0 0;min-height:3px}.bar .bl{font-size:12px;color:var(--muted)}.bar .bn{font-family:var(--mono);font-size:12px;color:var(--ink)}
+  .agenda .day{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin:16px 0 8px}
+  .ev{display:flex;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:12px 14px;margin-bottom:8px}
+  .ev .tg{font-family:var(--mono);font-size:10px;color:var(--faint);text-transform:uppercase;border:1px solid var(--line-2);border-radius:6px;padding:2px 7px}
+  .stub{margin:40px 30px;padding:50px 30px;border:1px dashed var(--line-2);border-radius:16px;text-align:center;color:var(--faint)}.stub b{color:var(--ink);display:block;font-size:16px;margin-bottom:6px}
+  .empty{padding:44px;text-align:center;color:var(--faint);font-size:14px}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--surface-2);border:1px solid var(--line-2);color:var(--ink);padding:11px 18px;border-radius:11px;font-size:13px;z-index:90;opacity:0;transition:opacity .2s}.toast.show{opacity:1}
+  .mapgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;align-items:center;margin:6px 0 14px}.mapgrid .csvcol{font-size:13px;color:var(--ink);font-family:var(--mono)}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:0 30px 20px}@media(max-width:900px){.split{grid-template-columns:1fr}}
+  .listrow{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}.listrow:last-child{border:none}
+</style></head>
+<body>
+<div class="glow"></div><div id="root"></div><div id="toast" class="toast"></div>
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+/* ===== CONFIG — completá antes de deployar (Supabase → Settings → API) ===== */
+const SUPABASE_URL = 'https://mnsbmrzeltolhkzdbaop.supabase.co'
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1uc2JtcnplbHRvbGhremRiYW9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5NTEyODcsImV4cCI6MjEwMTUyNzI4N30.Zb0JD1dx2xiqmc_-mvtOU6dYhtjV8MYq7tbLg8r1Wgg'
+
+const ROCKET=`<svg viewBox="0 0 48 48" fill="none"><path d="M30 8c-2 6-8 9-8 9l6 6s3-6 9-8c1-4 .5-7 .5-7S32 7 30 8Z" fill="#eef1f6"/><path d="M22 17c-6 2-11 9-13 22 12-3 18-8 20-14l-7-8Z" fill="#eef1f6"/><circle cx="30" cy="15" r="2" fill="#07080b"/></svg>`
+const ESTADOS=['Nuevo','Contactado','Confirmó clase','Asistió','Agendó','Cerrado','Perdido']
+const TEMPS=['fluido','potencial','leve'];const MONEDAS=['USD','ARS','EUR'];const PAGE=50
+const root=document.getElementById('root')
+let sb=null,me=null,myProfile=null
+let state={page:0,q:'',temp:'',estado:'',mine:false,total:0,leads:[],setters:[],lanz:null,clases:[]}
+const esc=s=>(s??'').toString().replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
+const initials=n=>(n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase()
+const isMgr=()=>myProfile&&(myProfile.rol==='manager'||myProfile.rol==='admin')
+const money=n=>'US$ '+(Number(n||0)).toLocaleString('es',{minimumFractionDigits:2,maximumFractionDigits:2})
+const num=n=>(Number(n||0)).toLocaleString('es')
+const nameOf=id=>{const s=state.setters.find(x=>x.id===id);return s?s.nombre:null}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1900)}
+function fmtDate(s){if(!s)return'—';const d=new Date(s),n=new Date();if(d.toDateString()===n.toDateString())return'hoy '+d.toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'});return d.toLocaleDateString('es',{day:'2-digit',month:'2-digit'})}
+function view(){return document.getElementById('view')}
+
+/* ---------- BOOT ---------- */
+if(!SUPABASE_URL||!SUPABASE_ANON_KEY){renderConfigNeeded()}
+else{sb=createClient(SUPABASE_URL,SUPABASE_ANON_KEY)
+  const{data:{session}}=await sb.auth.getSession()
+  if(session)await afterLogin(session);else renderLogin()
+  sb.auth.onAuthStateChange((_e,s)=>{if(!s)renderLogin()})}
+function renderConfigNeeded(){root.innerHTML=`<div class="login"><div class="box"><div class="brand">${ROCKET}<div class="wm"><b>NAVE</b><span>Instituto · CRM</span></div></div><h1>Falta conectar Supabase</h1><p>Completá <code>SUPABASE_URL</code> y <code>SUPABASE_ANON_KEY</code> arriba de <code>index.html</code> (Supabase → Settings → API) y volvé a deployar. El SQL está en <code>schema.sql</code>.</p></div></div>`}
+
+/* ---------- AUTH ---------- */
+function renderLogin(){
+  root.innerHTML=`<div class="login"><div class="box"><div class="brand">${ROCKET}<div class="wm"><b>NAVE</b><span>Instituto · CRM</span></div></div>
+    <h1 id="lt">Ingresá</h1><p id="ls">Accedé con tu cuenta del equipo.</p>
+    <div class="field"><label>Email</label><input class="inp" id="le" type="email" placeholder="vos@nave.com"/></div>
+    <div class="field"><label>Contraseña</label><input class="inp" id="lp" type="password" placeholder="••••••••"/></div>
+    <div class="field" id="lnw" style="display:none"><label>Tu nombre</label><input class="inp" id="ln" placeholder="Nombre y apellido"/></div>
+    <button class="btn primary" id="lb" style="width:100%;margin-top:6px">Entrar</button><div class="err" id="lerr"></div>
+    <div class="alt">¿No tenés cuenta? <a id="ltg">Crear una</a></div></div></div>`
+  let m='in';const $=id=>document.getElementById(id)
+  $('ltg').onclick=()=>{m=m==='in'?'up':'in';$('lt').textContent=m==='in'?'Ingresá':'Crear cuenta';$('lnw').style.display=m==='in'?'none':'block';$('lb').textContent=m==='in'?'Entrar':'Crear cuenta';$('ltg').textContent=m==='in'?'Crear una':'Ya tengo cuenta'}
+  $('lb').onclick=async()=>{const email=$('le').value.trim(),pass=$('lp').value,err=$('lerr');err.textContent=''
+    if(!email||!pass){err.textContent='Completá email y contraseña.';return}$('lb').textContent='...'
+    let r=m==='up'?await sb.auth.signUp({email,password:pass,options:{data:{nombre:$('ln').value.trim()}}}):await sb.auth.signInWithPassword({email,password:pass})
+    if(r.error){err.textContent=r.error.message;$('lb').textContent=m==='in'?'Entrar':'Crear cuenta';return}
+    if(r.data.session)await afterLogin(r.data.session);else err.textContent='Revisá tu email para confirmar la cuenta.'}
+}
+async function afterLogin(session){me=session.user
+  const{data:prof}=await sb.from('profiles').select('*').eq('id',me.id).single()
+  myProfile=prof||{nombre:me.email,rol:'setter'}
+  await ensureLanzamiento();await ensureClases()
+  const{data:setters}=await sb.from('profiles').select('id,nombre,rol').eq('activo',true)
+  state.setters=setters||[]
+  if(!location.hash)location.hash='#/panel'
+  renderShell();route()}
+async function ensureLanzamiento(){let{data}=await sb.from('lanzamientos').select('*').eq('activo',true).order('created_at',{ascending:false}).limit(1)
+  if(data&&data[0]){state.lanz=data[0];return}
+  if(isMgr()){const{data:n}=await sb.from('lanzamientos').insert({nombre:'Lanzamiento actual',activo:true}).select().single();state.lanz=n}}
+async function ensureClases(){if(!state.lanz)return
+  let{data}=await sb.from('clases').select('*').eq('lanzamiento_id',state.lanz.id).order('numero')
+  if((!data||!data.length)&&isMgr()){await sb.from('clases').insert([1,2,3].map(nu=>({lanzamiento_id:state.lanz.id,numero:nu,titulo:'Clase '+nu})));const r=await sb.from('clases').select('*').eq('lanzamiento_id',state.lanz.id).order('numero');data=r.data}
+  state.clases=data||[]}
+
+/* ---------- SHELL + ROUTER ---------- */
+const NAV=[
+  {g:null,items:[['#/panel','Panel general'],['#/calendario','Calendario']]},
+  {g:'Setter',items:[['#/leads','Leads'],['#/nuevo','Nuevo lead'],['#/importar','Importar / agendar'],['#/kpis','KPIs diarios']]},
+  {g:'Closer',items:[['#/triage','Triage'],['#/reporte','Reporte de llamadas'],['#/grilla','Grilla de reportes']]},
+  {g:'Marketing',items:[['#/marketing','Rendimiento de contenido']]},
+  {g:'Cobros',items:[['#/cobros','Cuotas y seguimientos']]}]
+function renderShell(){
+  const nav=NAV.map(s=>`${s.g?`<div class="grp">${s.g}</div>`:''}${s.items.map(([h,l])=>`<a data-h="${h}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/></svg><span>${l}</span></a>`).join('')}`).join('')
+  root.innerHTML=`<div id="app"><aside class="side"><div class="brand">${ROCKET}<div class="wm"><b>NAVE</b><span>Instituto · CRM</span></div></div>
+    <nav class="nav">${nav}</nav>
+    <div class="me"><div class="av">${initials(myProfile.nombre)}</div><div><div class="nm">${esc(myProfile.nombre||me.email)}</div><div class="rl">${esc(myProfile.rol)}</div></div><button class="out" id="so" title="Salir">⎋</button></div>
+    </aside><main class="main" id="view"></main></div>`
+  root.querySelectorAll('.nav a').forEach(a=>a.onclick=()=>location.hash=a.dataset.h)
+  document.getElementById('so').onclick=()=>sb.auth.signOut();window.onhashchange=route}
+function setActive(){root.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('on',a.dataset.h===location.hash))}
+function route(){setActive();const h=location.hash
+  const map={'#/panel':renderPanel,'#/calendario':renderCalendario,'#/leads':renderLeads,'#/nuevo':()=>openLeadModal(),'#/importar':renderImport,'#/kpis':renderKpis,'#/triage':renderTriage,'#/reporte':renderReporte,'#/grilla':renderGrilla,'#/marketing':renderMarketing,'#/cobros':renderCobros}
+  ;(map[h]||renderPanel)()}
+function head(sub,title,actions=''){return `<div class="top"><div><div class="sub">${sub}</div><h1>${title}</h1></div><div class="grow"></div>${actions}</div>`}
+
+/* ================= PANEL GENERAL ================= */
+async function renderPanel(){
+  view().innerHTML=head('DASHBOARD · '+esc((state.lanz&&state.lanz.nombre)||'LANZAMIENTO'),'Panel general')+`<div class="funnel" id="funnel"></div>
+    <div class="split"><div class="card" style="margin:0"><h3>Seguimientos de hoy</h3><p class="cdesc">Tu cola priorizada del día.</p><div id="seg"></div></div>
+    <div class="card" style="margin:0"><h3>Cobros del lanzamiento</h3><p class="cdesc">Resumen de plata.</p><div id="cob"></div></div></div>`
+  loadFunnel()
+  // seguimientos hoy
+  const today=new Date().toISOString().slice(0,10)
+  let sq=sb.from('seguimientos').select('*,leads(nombre,contacto)').eq('hecho',false).lte('fecha_programada',today).order('fecha_programada').limit(30)
+  if(!isMgr())sq=sq.eq('asesor_id',me.id)
+  const{data:segs}=await sq
+  document.getElementById('seg').innerHTML=(segs&&segs.length)?segs.map(s=>`<div class="listrow"><div style="flex:1"><div class="nm">${esc(s.leads?s.leads.nombre:'Lead')}</div><div class="sub2">${esc(s.tipo||'seguimiento')} · ${esc(s.nota||'')}</div></div><div class="sub2">${esc(s.fecha_programada||'')}</div><button class="pg" data-seg="${s.id}">✓ hecho</button></div>`).join(''):`<div class="empty" style="padding:24px">Sin seguimientos pendientes 🎉</div>`
+  document.querySelectorAll('[data-seg]').forEach(b=>b.onclick=async()=>{await sb.from('seguimientos').update({hecho:true}).eq('id',b.dataset.seg);toast('Marcado ✓');renderPanel()})
+  // cobros resumen
+  const c=await cobrosResumen()
+  document.getElementById('cob').innerHTML=`<div class="listrow"><span style="flex:1" class="sub2">Cobrado total</span><span class="nm">${money(c.cobrado)}</span></div>
+    <div class="listrow"><span style="flex:1" class="sub2">Al día (pendiente)</span><span class="nm">${money(c.aldia)}</span></div>
+    <div class="listrow"><span style="flex:1" class="sub2">Vencidas</span><span class="nm" style="color:var(--danger)">${money(c.vencidas)}</span></div>
+    <div class="listrow"><span style="flex:1" class="sub2">Total programa activo</span><span class="nm">${money(c.total)}</span></div>`
+}
+async function loadFunnel(){const el=document.getElementById('funnel');if(!el)return
+  const{count:total}=await sb.from('leads').select('*',{count:'exact',head:true})
+  const ci=async es=>{const{count}=await sb.from('leads').select('*',{count:'exact',head:true}).in('estado',es);return count||0}
+  const conf=await ci(['Confirmó clase','Asistió','Agendó','Cerrado']),asis=await ci(['Asistió','Agendó','Cerrado']),agen=await ci(['Agendó','Cerrado']),cerr=await ci(['Cerrado'])
+  const t=total||0,pc=n=>t?((n/t*100).toFixed(1).replace('.',',')+'%'):'0%',w=n=>t?Math.round(n/t*100):0
+  const cells=[['Leads totales',t,'100%',100],['Confirmaron clase',conf,pc(conf),w(conf)],['Asistieron',asis,pc(asis),w(asis)],['Agendaron call',agen,pc(agen),w(agen)],['Cerraron',cerr,pc(cerr),w(cerr)]]
+  el.innerHTML=cells.map(([l,n,p,wd])=>`<div class="fcell"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/></svg><div class="n">${num(n)}</div><div class="l">${l}</div><div class="pct">${p}</div><div class="track"><i style="width:${wd}%"></i></div></div>`).join('')}
+async function cobrosResumen(){const today=new Date().toISOString().slice(0,10)
+  const{data}=await sb.from('cuotas').select('monto_usd,estado,vencimiento,origen').limit(10000)
+  let cobrado=0,aldia=0,vencidas=0,total=0,upsell=0
+  ;(data||[]).forEach(c=>{const m=Number(c.monto_usd||0);total+=m
+    if(c.estado==='cobrado'){cobrado+=m;if(['upsell','resell'].includes(c.origen))upsell+=m}
+    else if(c.estado==='vencido'||(c.vencimiento&&c.vencimiento<today))vencidas+=m;else aldia+=m})
+  return{cobrado,aldia,vencidas,total,upsell}}
+
+/* ================= LEADS ================= */
+async function renderLeads(){const v=view()
+  v.innerHTML=head('SETTER · '+esc((state.lanz&&state.lanz.nombre)||'LANZAMIENTO'),'Leads',
+    `<button class="btn ghost" id="b_imp">⤓ Importar CSV</button>${isMgr()?'<button class="btn ghost" id="b_auto">Auto-repartir</button>':''}<button class="btn primary" id="b_new">+ Nuevo lead</button>`)
+    +`<div class="funnel" id="funnel"></div>
+    <div class="tb"><input class="inp search" id="f_q" placeholder="Buscar nombre, @ o WhatsApp…" value="${esc(state.q)}"/>
+      <span class="pill ${!state.mine?'on':''}" data-mine="0">Todos</span><span class="pill ${state.mine?'on':''}" data-mine="1">Mis leads</span>
+      <select class="pill" id="f_temp"><option value="">Temperatura</option>${TEMPS.map(t=>`<option ${state.temp===t?'selected':''}>${t}</option>`).join('')}</select>
+      <select class="pill" id="f_estado"><option value="">Estado</option>${ESTADOS.map(e=>`<option ${state.estado===e?'selected':''}>${e}</option>`).join('')}</select></div>
+    <div class="tablewrap"><table><thead><tr><th>Nombre</th><th>Contacto</th><th>Temp.</th><th>Estado</th><th>Asesor</th><th>Actualizado</th></tr></thead><tbody id="rows"><tr><td colspan="6" class="empty">Cargando…</td></tr></tbody></table><div class="foot" id="foot"></div></div>`
+  v.querySelector('#b_new').onclick=()=>openLeadModal();v.querySelector('#b_imp').onclick=()=>location.hash='#/importar'
+  const a=v.querySelector('#b_auto');if(a)a.onclick=autoRepartir
+  v.querySelectorAll('[data-mine]').forEach(p=>p.onclick=()=>{state.mine=p.dataset.mine==='1';state.page=0;renderLeads()})
+  let qt;v.querySelector('#f_q').oninput=e=>{clearTimeout(qt);state.q=e.target.value;qt=setTimeout(()=>{state.page=0;loadLeads()},300)}
+  v.querySelector('#f_temp').onchange=e=>{state.temp=e.target.value;state.page=0;loadLeads()}
+  v.querySelector('#f_estado').onchange=e=>{state.estado=e.target.value;state.page=0;loadLeads()}
+  loadFunnel();loadLeads()}
+function baseQuery(count){let q=sb.from('leads').select('*',count?{count:'exact'}:{})
+  if(state.mine)q=q.eq('asesor_id',me.id);if(state.temp)q=q.eq('temperatura',state.temp);if(state.estado)q=q.eq('estado',state.estado)
+  if(state.q)q=q.or(`nombre.ilike.%${state.q}%,contacto.ilike.%${state.q}%`);return q}
+async function loadLeads(){const rows=document.getElementById('rows');if(!rows)return
+  const from=state.page*PAGE
+  const{data,count,error}=await baseQuery(true).order('updated_at',{ascending:false}).range(from,from+PAGE-1)
+  if(error){rows.innerHTML=`<tr><td colspan="6" class="empty">Error: ${esc(error.message)}</td></tr>`;return}
+  state.leads=data||[];state.total=count||0
+  rows.innerHTML=state.leads.length?state.leads.map(l=>`<tr class="clk" data-id="${l.id}"><td><div class="nm">${esc(l.nombre)||'(sin nombre)'}</div><div class="sub2">${esc(l.fuente||'')}</div></td><td>${esc(l.contacto||'—')}</td><td><span class="chip ${l.temperatura||'potencial'}">${esc(l.temperatura||'potencial')}</span></td><td><span class="estado"><span class="dot"></span>${esc(l.estado||'Nuevo')}</span></td><td>${l.asesor_id?`<span class="who"><span class="a">${initials(nameOf(l.asesor_id))}</span>${esc((nameOf(l.asesor_id)||'').split(' ')[0])}</span>`:'<span class="sub2">— sin asignar</span>'}</td><td class="sub2">${fmtDate(l.updated_at)}</td></tr>`).join(''):`<tr><td colspan="6" class="empty">No hay leads con estos filtros.</td></tr>`
+  rows.querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>openLeadModal(state.leads.find(x=>x.id===tr.dataset.id)))
+  const pages=Math.max(1,Math.ceil(state.total/PAGE)),f=document.getElementById('foot')
+  f.innerHTML=`<span>Mostrando ${state.total?from+1:0}–${Math.min(from+PAGE,state.total)} de ${num(state.total)}</span><div class="grow"></div><button class="pg" id="prev" ${state.page<=0?'disabled':''}>‹ Anterior</button><span>${state.page+1}/${pages}</span><button class="pg" id="next" ${state.page>=pages-1?'disabled':''}>Siguiente ›</button>`
+  const pv=document.getElementById('prev'),nx=document.getElementById('next')
+  if(pv)pv.onclick=()=>{if(state.page>0){state.page--;loadLeads()}};if(nx)nx.onclick=()=>{if(state.page<pages-1){state.page++;loadLeads()}}}
+async function openLeadModal(lead){
+  let asist={};if(lead){const{data}=await sb.from('asistencias').select('*').eq('lead_id',lead.id);(data||[]).forEach(a=>asist[a.clase_id]=a.asistio)}
+  const l=lead||{nombre:'',contacto:'',fuente:'Instagram',temperatura:'potencial',estado:'Nuevo',tema:'',dolor:'',notas:'',asesor_id:me.id}
+  const ov=document.createElement('div');ov.className='overlay'
+  ov.innerHTML=`<div class="modal"><h2>${lead?'Editar lead':'Nuevo lead'}</h2>
+    <div class="row2"><div class="field"><label>Nombre *</label><input class="inp" id="m_nombre" value="${esc(l.nombre)}"/></div><div class="field"><label>Contacto (@ / WhatsApp)</label><input class="inp" id="m_contacto" value="${esc(l.contacto)}"/></div></div>
+    <div class="row2"><div class="field"><label>Temperatura</label><select id="m_temp">${TEMPS.map(t=>`<option ${l.temperatura===t?'selected':''}>${t}</option>`).join('')}</select></div><div class="field"><label>Estado</label><select id="m_estado">${ESTADOS.map(e=>`<option ${l.estado===e?'selected':''}>${e}</option>`).join('')}</select></div></div>
+    <div class="row2"><div class="field"><label>Fuente</label><input class="inp" id="m_fuente" value="${esc(l.fuente)}"/></div><div class="field"><label>Asesor</label><select id="m_asesor"><option value="">— sin asignar —</option>${state.setters.map(s=>`<option value="${s.id}" ${l.asesor_id===s.id?'selected':''}>${esc(s.nombre)}</option>`).join('')}</select></div></div>
+    <div class="field"><label>Tema que eligió</label><input class="inp" id="m_tema" value="${esc(l.tema)}"/></div>
+    ${state.clases.length?`<div class="field"><label>Asistencia a clases</label><div class="attend" id="m_asist">${state.clases.map(c=>`<button type="button" class="clbtn ${asist[c.id]?'yes':''}" data-cl="${c.id}">Clase ${c.numero}</button>`).join('')}</div></div>`:''}
+    <div class="row2"><div class="field"><label>Próximo seguimiento</label><input class="inp" id="m_segf" type="date"/></div><div class="field"><label>Nota del seguimiento</label><input class="inp" id="m_segn" placeholder="ej: mandar audio FOMO"/></div></div>
+    <div class="field"><label>Notas</label><textarea id="m_notas" rows="2">${esc(l.notas)}</textarea></div>
+    <div class="actions">${lead?'<button class="btn danger" id="m_del">Eliminar</button>':''}<div class="grow"></div><button class="btn ghost" id="m_cancel">Cancelar</button><button class="btn primary" id="m_save">Guardar</button></div></div>`
+  document.body.appendChild(ov);const g=id=>ov.querySelector('#'+id)
+  ov.onclick=e=>{if(e.target===ov)ov.remove()};g('m_cancel').onclick=()=>ov.remove()
+  ov.querySelectorAll('[data-cl]').forEach(b=>b.onclick=()=>b.classList.toggle('yes'))
+  g('m_save').onclick=async()=>{const p={nombre:g('m_nombre').value.trim(),contacto:g('m_contacto').value.trim(),temperatura:g('m_temp').value,estado:g('m_estado').value,fuente:g('m_fuente').value.trim(),asesor_id:g('m_asesor').value||null,tema:g('m_tema').value.trim(),notas:g('m_notas').value.trim(),lanzamiento_id:state.lanz?state.lanz.id:null,updated_at:new Date().toISOString()}
+    if(!p.nombre){toast('Poné un nombre');return};if(p.contacto)p.dedup_key=p.contacto.toLowerCase().replace(/[^a-z0-9]/g,'')
+    let leadId=lead?lead.id:null,res=lead?await sb.from('leads').update(p).eq('id',lead.id):await sb.from('leads').insert(p).select().single()
+    if(res.error){toast('Error: '+res.error.message);return};if(!lead)leadId=res.data.id
+    // asistencias
+    if(state.clases.length&&leadId){for(const b of ov.querySelectorAll('[data-cl]')){await sb.from('asistencias').upsert({lead_id:leadId,clase_id:b.dataset.cl,asistio:b.classList.contains('yes')},{onConflict:'lead_id,clase_id'})}}
+    // seguimiento
+    if(g('m_segf').value&&leadId){await sb.from('seguimientos').insert({lead_id:leadId,asesor_id:p.asesor_id||me.id,fecha_programada:g('m_segf').value,tipo:'seguimiento',nota:g('m_segn').value.trim()})}
+    toast('Guardado ✓');ov.remove();if(location.hash==='#/leads'){loadLeads();loadFunnel()}else location.hash='#/leads'}
+  if(lead)g('m_del').onclick=async()=>{if(confirm('¿Eliminar este lead?')){await sb.from('leads').delete().eq('id',lead.id);toast('Eliminado');ov.remove();if(location.hash==='#/leads'){loadLeads();loadFunnel()}}}}
+
+/* ================= IMPORT ================= */
+function renderImport(){view().innerHTML=head('SETTER','Importar leads (CSV)')+`<div class="card"><p class="cdesc">Subí un CSV (primera fila = encabezado). Mapeás las columnas, se descartan duplicados por contacto y ${isMgr()?'se reparten entre asesores activos':'quedan a tu nombre'}.</p><input type="file" id="csv" accept=".csv,text/csv" class="inp" style="padding:14px"/><div id="mapArea"></div></div>`
+  document.getElementById('csv').onchange=handleCsv}
+function parseCsv(text){const rows=[];let i=0,cur='',row=[],q=false;const push=()=>{row.push(cur);cur=''},pushR=()=>{push();rows.push(row);row=[]}
+  while(i<text.length){const c=text[i];if(q){if(c==='"'){if(text[i+1]==='"'){cur+='"';i++}else q=false}else cur+=c}else{if(c==='"')q=true;else if(c===',')push();else if(c==='\n')pushR();else if(c==='\r'){}else cur+=c}i++}
+  if(cur.length||row.length)pushR();return rows.filter(r=>r.some(x=>x.trim()!==''))}
+let CSV=null
+function handleCsv(e){const f=e.target.files[0];if(!f)return;const rd=new FileReader()
+  rd.onload=()=>{const rows=parseCsv(rd.result);if(rows.length<2){toast('CSV vacío o sin datos');return};CSV={headers:rows[0],rows:rows.slice(1)}
+    const gs=(...k)=>CSV.headers.findIndex(h=>k.some(x=>h.toLowerCase().includes(x)))
+    const fs=[['nombre','Nombre',gs('nombre','name')],['contacto','Contacto (@ / WhatsApp)',gs('contacto','instagram','whats','usuario','telefono','phone')],['fuente','Fuente',gs('fuente','source','plataforma')],['temperatura','Temperatura',gs('temperatura','temp')]]
+    document.getElementById('mapArea').innerHTML=`<div style="margin-top:18px"><b style="font-size:13px">Mapeá las columnas · ${CSV.rows.length} filas</b><div class="mapgrid" style="margin-top:12px">${fs.map(([k,lab,gi])=>`<span class="csvcol">${lab}</span><select id="map_${k}"><option value="-1">— ninguna —</option>${CSV.headers.map((h,idx)=>`<option value="${idx}" ${idx===gi?'selected':''}>${esc(h)}</option>`).join('')}</select>`).join('')}</div><button class="btn primary" id="doImp">Importar ${CSV.rows.length} leads</button></div>`
+    document.getElementById('doImp').onclick=doImport}
+  rd.readAsText(f)}
+async function doImport(){const gm=k=>parseInt(document.getElementById('map_'+k).value),mi={nombre:gm('nombre'),contacto:gm('contacto'),fuente:gm('fuente'),temperatura:gm('temperatura')}
+  if(mi.nombre<0){toast('Elegí la columna de Nombre');return}
+  const setters=isMgr()?state.setters:[{id:me.id}],btn=document.getElementById('doImp');btn.textContent='Importando…'
+  const rows=CSV.rows.map((r,idx)=>{const contacto=mi.contacto>=0?(r[mi.contacto]||'').trim():'',temp=mi.temperatura>=0?(r[mi.temperatura]||'').trim().toLowerCase():''
+    return{nombre:(r[mi.nombre]||'').trim(),contacto,fuente:mi.fuente>=0?(r[mi.fuente]||'').trim():null,temperatura:TEMPS.includes(temp)?temp:'potencial',estado:'Nuevo',asesor_id:setters.length?setters[idx%setters.length].id:null,lanzamiento_id:state.lanz?state.lanz.id:null,dedup_key:contacto?contacto.toLowerCase().replace(/[^a-z0-9]/g,''):null}}).filter(r=>r.nombre)
+  let ok=0;for(let i=0;i<rows.length;i+=500){const chunk=rows.slice(i,i+500);const{error,count}=await sb.from('leads').upsert(chunk,{onConflict:'lanzamiento_id,dedup_key',ignoreDuplicates:true,count:'exact'});if(error){toast('Error: '+error.message);btn.textContent='Reintentar';return}ok+=count||chunk.length}
+  toast(`Importados ${ok} leads ✓`);location.hash='#/leads'}
+async function autoRepartir(){if(!confirm('¿Repartir los leads SIN asignar entre los asesores activos?'))return
+  const{data:un}=await sb.from('leads').select('id').is('asesor_id',null).limit(5000);if(!un||!un.length){toast('No hay leads sin asignar');return}
+  const st=state.setters;if(!st.length){toast('No hay asesores activos');return}
+  for(let i=0;i<un.length;i++)await sb.from('leads').update({asesor_id:st[i%st.length].id}).eq('id',un[i].id)
+  toast(`Repartidos ${un.length} leads ✓`);loadLeads();loadFunnel()}
+
+/* ================= KPIS DIARIOS ================= */
+async function renderKpis(){const today=new Date().toISOString().slice(0,10)
+  view().innerHTML=head('SETTER','KPIs diarios')+`<div class="card"><h3>Cargar KPI del día</h3><p class="cdesc">Se actualizan cada vez que guardás — podés volver a cargar durante el día.</p>
+    <div class="row3"><div class="field"><label>Fecha</label><input class="inp" id="k_fecha" type="date" value="${today}"/></div><div class="field"><label>Chats únicos</label><input class="inp" id="k_chats" type="number" value="0"/></div><div class="field"><label>Conversaciones</label><input class="inp" id="k_conv" type="number" value="0"/></div></div>
+    <div class="row3"><div class="field"><label>VSL enviados</label><input class="inp" id="k_vsl" type="number" value="0"/></div><div class="field"><label>Calendarios</label><input class="inp" id="k_cal" type="number" value="0"/></div><div class="field"><label>Agendas</label><input class="inp" id="k_ag" type="number" value="0"/></div></div>
+    <div class="row2"><div class="field"><label>Calificados</label><input class="inp" id="k_cali" type="number" value="0"/></div><div class="field"><label>Notas</label><input class="inp" id="k_notas"/></div></div>
+    <div class="actions"><div class="grow"></div><button class="btn primary" id="k_save">Guardar KPIs del día</button></div></div>
+    <div class="tablewrap"><table><thead><tr><th>Fecha</th><th>Setter</th><th>Chats</th><th>Conv.</th><th>VSL</th><th>Cal.</th><th>Agendas</th><th>Calif.</th></tr></thead><tbody id="khist"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table></div>`
+  document.getElementById('k_save').onclick=async()=>{const g=id=>document.getElementById(id)
+    const p={setter_id:me.id,fecha:g('k_fecha').value,chats_unicos:+g('k_chats').value,conversaciones:+g('k_conv').value,vsl:+g('k_vsl').value,calendarios:+g('k_cal').value,agendas:+g('k_ag').value,calificados:+g('k_cali').value,notas:g('k_notas').value.trim()}
+    const{error}=await sb.from('kpis_diarios').upsert(p,{onConflict:'setter_id,fecha'});if(error){toast('Error: '+error.message);return};toast('Guardado ✓');loadKhist()}
+  loadKhist()}
+async function loadKhist(){const el=document.getElementById('khist');if(!el)return
+  let q=sb.from('kpis_diarios').select('*').order('fecha',{ascending:false}).limit(60);if(!isMgr())q=q.eq('setter_id',me.id)
+  const{data}=await q;el.innerHTML=(data&&data.length)?data.map(k=>`<tr><td class="nm">${esc(k.fecha)}</td><td>${esc(nameOf(k.setter_id)||'—')}</td><td>${k.chats_unicos}</td><td>${k.conversaciones}</td><td>${k.vsl}</td><td>${k.calendarios}</td><td>${k.agendas}</td><td>${k.calificados}</td></tr>`).join(''):`<tr><td colspan="8" class="empty">Sin registros todavía.</td></tr>`}
+
+/* ================= TRIAGE ================= */
+async function renderTriage(){view().innerHTML=head('CLOSER','Triage')+`<div class="card"><h3>Agendas para triage</h3><p class="cdesc">Leads que agendaron y hay que calificar/preparar antes de la call.</p><div id="tr"></div></div>`
+  const{data}=await sb.from('leads').select('*').in('estado',['Agendó','Confirmó clase']).order('updated_at',{ascending:false}).limit(100)
+  document.getElementById('tr').innerHTML=(data&&data.length)?data.map(l=>`<div class="listrow"><div style="flex:1"><div class="nm">${esc(l.nombre)}</div><div class="sub2">${esc(l.contacto||'')} · ${esc(l.tema||'sin tema')}</div></div><span class="chip ${l.temperatura}">${esc(l.temperatura)}</span><button class="pg" data-l="${l.id}">Abrir</button></div>`).join(''):`<div class="empty" style="padding:24px">Nada en triage.</div>`
+  document.querySelectorAll('[data-l]').forEach(b=>b.onclick=async()=>{const{data:l}=await sb.from('leads').select('*').eq('id',b.dataset.l).single();openLeadModal(l)})}
+
+/* ================= REPORTE DE LLAMADAS ================= */
+async function renderReporte(){
+  const{data:leads}=await sb.from('leads').select('id,nombre').in('estado',['Agendó','Confirmó clase','Asistió']).order('updated_at',{ascending:false}).limit(300)
+  const{data:progs}=await sb.from('programas').select('*')
+  view().innerHTML=head('CLOSER','Reporte de llamadas')+`<div class="card"><h3>Datos de la llamada</h3>
+    <div class="row2"><div class="field"><label>Lead (agenda)</label><select id="r_lead"><option value="">— elegir —</option>${(leads||[]).map(l=>`<option value="${l.id}">${esc(l.nombre)}</option>`).join('')}</select></div><div class="field"><label>¿No está? Nombre nuevo</label><input class="inp" id="r_nuevo" placeholder="Se crea el lead solo"/></div></div>
+    <div class="row2"><div class="field"><label>¿Se presentó?</label><select id="r_asis"><option>Asistió</option><option>No-show</option><option>Reprogramó</option></select></div><div class="field"><label>Resultado</label><select id="r_res"><option value="">— sin resultado —</option><option>Cerró</option><option>Seguimiento</option><option>No cierre</option></select></div></div>
+    <div class="field"><label>Link de Fathom</label><input class="inp" id="r_fathom" placeholder="https://fathom.video/..."/></div>
+    <div class="row2"><div class="field"><label>Programa ofrecido</label><input class="inp" id="r_prog" list="progs" placeholder="Programa"/><datalist id="progs">${(progs||[]).map(p=>`<option>${esc(p.nombre)}</option>`).join('')}</datalist></div><div class="field"><label>Forma de cierre</label><select id="r_forma"><option value="">—</option><option>Pago único</option><option>2 cuotas</option><option>3 cuotas</option></select></div></div></div>
+    <div class="card"><h3>Plata</h3><div class="row3"><div class="field"><label>Moneda</label><select id="r_mon">${MONEDAS.map(m=>`<option>${m}</option>`).join('')}</select></div><div class="field"><label>Monto facturado</label><input class="inp" id="r_fact" type="number" placeholder="0"/></div><div class="field"><label>Monto upfront</label><input class="inp" id="r_up" type="number" placeholder="0"/></div></div><div class="field"><label>Billetera / medio</label><input class="inp" id="r_bill"/></div><p class="cdesc">Si elegís ARS/EUR, se convierte a USD con la última cotización cargada (o 1:1 si no hay).</p></div>
+    <div class="card"><h3>Reporte de la llamada</h3><div class="field"><label>Situación actual</label><textarea id="r_sit" rows="2"></textarea></div><div class="field"><label>Dolores</label><textarea id="r_dol" rows="2"></textarea></div><div class="field"><label>Razones de compra</label><textarea id="r_raz" rows="2"></textarea></div>
+    <div class="row2"><div class="field"><label>Objeción principal</label><input class="inp" id="r_o1"/></div><div class="field"><label>Objeción secundaria</label><input class="inp" id="r_o2"/></div></div>
+    <div class="field"><label>Frases clave del lead</label><textarea id="r_fr" rows="2"></textarea></div>
+    <div class="row2"><div class="field"><label>Motivo de no cierre</label><input class="inp" id="r_mnc"/></div><div class="field"><label>Próximo seguimiento</label><input class="inp" id="r_ps" type="date"/></div></div>
+    <div class="row2"><div class="field"><label>Total proyectado a cobrar</label><input class="inp" id="r_tp" type="number"/></div><div class="field"><label>Próxima acción</label><input class="inp" id="r_pa"/></div></div>
+    <div class="field"><label>Feedback / notas</label><textarea id="r_fb" rows="2"></textarea></div>
+    <div class="actions"><div class="grow"></div><button class="btn primary" id="r_save">Guardar reporte</button></div></div>`
+  document.getElementById('r_save').onclick=saveReporte}
+async function fxRate(mon){if(mon==='USD')return 1;const{data}=await sb.from('cotizaciones_fx').select('valor').eq('moneda',mon).order('fecha',{ascending:false}).limit(1);return(data&&data[0]&&data[0].valor)?Number(data[0].valor):1}
+async function saveReporte(){const g=id=>document.getElementById(id)
+  let leadId=g('r_lead').value||null
+  if(!leadId&&g('r_nuevo').value.trim()){const{data}=await sb.from('leads').insert({nombre:g('r_nuevo').value.trim(),estado:'Agendó',lanzamiento_id:state.lanz?state.lanz.id:null}).select().single();leadId=data.id}
+  const mon=g('r_mon').value,rate=await fxRate(mon),fact=Number(g('r_fact').value||0),up=Number(g('r_up').value||0)
+  const rep={lead_id:leadId,closer_id:me.id,asistio:g('r_asis').value,resultado:g('r_res').value||null,fathom_link:g('r_fathom').value.trim(),programa:g('r_prog').value.trim(),forma_cierre:g('r_forma').value||null,moneda:mon,monto_facturado:fact,monto_upfront:up,cotizacion:rate,billetera:g('r_bill').value.trim(),situacion:g('r_sit').value.trim(),dolores:g('r_dol').value.trim(),razones_compra:g('r_raz').value.trim(),objecion_principal:g('r_o1').value.trim(),objecion_secundaria:g('r_o2').value.trim(),frases_clave:g('r_fr').value.trim(),motivo_no_cierre:g('r_mnc').value.trim(),proximo_seguimiento:g('r_ps').value||null,total_proyectado:Number(g('r_tp').value||0),proxima_accion:g('r_pa').value.trim(),feedback:g('r_fb').value.trim()}
+  const{error}=await sb.from('reportes_llamada').insert(rep);if(error){toast('Error: '+error.message);return}
+  // update lead estado + generar cuotas si cerró
+  if(leadId&&rep.resultado==='Cerró'){await sb.from('leads').update({estado:'Cerrado'}).eq('id',leadId)
+    const upUsd=up/(rate||1),factUsd=fact/(rate||1),bill=rep.billetera
+    const cuotas=[]
+    if(up>0)cuotas.push({lead_id:leadId,programa:rep.programa,moneda:mon,monto:up,monto_usd:upUsd,estado:'cobrado',origen:'cierre',billetera:bill,cobrado_at:new Date().toISOString(),vencimiento:new Date().toISOString().slice(0,10)})
+    const resto=fact-up,ncu=rep.forma_cierre==='2 cuotas'?2:rep.forma_cierre==='3 cuotas'?3:0
+    if(ncu>0&&resto>0){const each=resto/ncu;for(let i=1;i<=ncu;i++){const d=new Date();d.setMonth(d.getMonth()+i);cuotas.push({lead_id:leadId,programa:rep.programa,moneda:mon,monto:each,monto_usd:each/(rate||1),estado:'pendiente',origen:'cierre',billetera:bill,vencimiento:d.toISOString().slice(0,10)})}}
+    else if(resto>0&&rep.forma_cierre==='Pago único'){cuotas.push({lead_id:leadId,programa:rep.programa,moneda:mon,monto:resto,monto_usd:resto/(rate||1),estado:'cobrado',origen:'cierre',billetera:bill,cobrado_at:new Date().toISOString(),vencimiento:new Date().toISOString().slice(0,10)})}
+    if(cuotas.length)await sb.from('cuotas').insert(cuotas)
+  }else if(leadId&&rep.asistio==='Asistió'){await sb.from('leads').update({estado:'Asistió'}).eq('id',leadId)}
+  if(leadId&&rep.proximo_seguimiento)await sb.from('seguimientos').insert({lead_id:leadId,asesor_id:me.id,fecha_programada:rep.proximo_seguimiento,tipo:'post-call',nota:rep.proxima_accion})
+  toast('Reporte guardado ✓');location.hash='#/grilla'}
+
+/* ================= GRILLA DE REPORTES ================= */
+async function renderGrilla(){view().innerHTML=head('CLOSER','Grilla de reportes')+`<div class="tablewrap"><table><thead><tr><th>Lead</th><th>Fecha</th><th>Closer</th><th>Asistencia</th><th>Resultado</th><th>Programa</th><th>Facturado</th></tr></thead><tbody id="grows"><tr><td colspan="7" class="empty">Cargando…</td></tr></tbody></table></div>`
+  let q=sb.from('reportes_llamada').select('*,leads(nombre)').order('fecha',{ascending:false}).limit(200);if(!isMgr())q=q.eq('closer_id',me.id)
+  const{data}=await q;document.getElementById('grows').innerHTML=(data&&data.length)?data.map(r=>`<tr class="clk" data-id="${r.id}"><td class="nm">${esc(r.leads?r.leads.nombre:'—')}</td><td class="sub2">${fmtDate(r.fecha)}</td><td>${esc((nameOf(r.closer_id)||'').split(' ')[0]||'—')}</td><td>${esc(r.asistio||'—')}</td><td>${esc(r.resultado||'—')}</td><td>${esc(r.programa||'—')}</td><td class="nm">${money((r.monto_facturado||0)/(r.cotizacion||1))}</td></tr>`).join(''):`<tr><td colspan="7" class="empty">Sin reportes todavía.</td></tr>`
+  document.querySelectorAll('#grows tr[data-id]').forEach(tr=>tr.onclick=()=>{const r=data.find(x=>x.id===tr.dataset.id);openReporteDetail(r)})}
+function openReporteDetail(r){const ov=document.createElement('div');ov.className='overlay'
+  const f=(l,v)=>v?`<div class="field"><label>${l}</label><div>${esc(v)}</div></div>`:''
+  ov.innerHTML=`<div class="modal"><h2>${esc(r.leads?r.leads.nombre:'Reporte')}</h2>${f('Asistencia',r.asistio)}${f('Resultado',r.resultado)}${f('Programa',r.programa)}${f('Forma de cierre',r.forma_cierre)}${f('Facturado',r.monto_facturado?money(r.monto_facturado/(r.cotizacion||1)):'')}${f('Situación',r.situacion)}${f('Dolores',r.dolores)}${f('Razones de compra',r.razones_compra)}${f('Objeción principal',r.objecion_principal)}${f('Frases clave',r.frases_clave)}${f('Próxima acción',r.proxima_accion)}${f('Feedback',r.feedback)}<div class="actions"><div class="grow"></div><button class="btn ghost" id="c">Cerrar</button></div></div>`
+  document.body.appendChild(ov);ov.onclick=e=>{if(e.target===ov)ov.remove()};ov.querySelector('#c').onclick=()=>ov.remove()}
+
+/* ================= MARKETING ================= */
+async function renderMarketing(){view().innerHTML=head('MARKETING','Rendimiento de contenido','<button class="btn primary" id="m_new">+ Nuevo punto de contacto</button>')+`<div class="funnel" id="mk"></div>
+  <div class="card"><h3>Leads por plataforma</h3><div class="bars" id="bars"></div></div>
+  <div class="tablewrap"><table><thead><tr><th>Tag</th><th>Pieza</th><th>Plataforma</th><th>Fecha</th><th>Chats</th><th>Leads</th><th>Calif.</th><th>Ventas</th><th>Generado</th></tr></thead><tbody id="pcrows"><tr><td colspan="9" class="empty">Cargando…</td></tr></tbody></table></div>`
+  document.getElementById('m_new').onclick=openPunto
+  const{data:pc}=await sb.from('puntos_contacto').select('*').order('fecha',{ascending:false}).limit(200)
+  const sum=(k)=>(pc||[]).reduce((a,x)=>a+Number(x[k]||0),0)
+  const cells=[['Chats únicos',sum('chats_unicos')],['Leads',sum('leads')],['Calificados',sum('calificados')],['Ventas',sum('ventas')],['Generado',money(sum('generado'))]]
+  document.getElementById('mk').innerHTML=cells.map(([l,n])=>`<div class="fcell"><div class="n" style="font-size:26px">${typeof n==='number'?num(n):n}</div><div class="l">${l}</div></div>`).join('')
+  document.getElementById('pcrows').innerHTML=(pc&&pc.length)?pc.map(p=>`<tr><td class="nm">${esc(p.tag||'')}</td><td>${esc(p.pieza||'')}</td><td>${esc(p.plataforma||'')}</td><td class="sub2">${esc(p.fecha||'')}</td><td>${p.chats_unicos}</td><td>${p.leads}</td><td>${p.calificados}</td><td>${p.ventas}</td><td class="nm">${money(p.generado)}</td></tr>`).join(''):`<tr><td colspan="9" class="empty">Sin puntos de contacto.</td></tr>`
+  // bars: leads por fuente
+  const{data:allLeads}=await sb.from('leads').select('fuente').limit(10000);const by={}
+  ;(allLeads||[]).forEach(l=>{const f=(l.fuente||'otros').toLowerCase();by[f]=(by[f]||0)+1})
+  const plats=['instagram','youtube','ads','otros'],mx=Math.max(1,...plats.map(p=>by[p]||0))
+  document.getElementById('bars').innerHTML=plats.map(p=>`<div class="bar"><div class="bn">${by[p]||0}</div><div class="col" style="height:${Math.round((by[p]||0)/mx*100)}%"></div><div class="bl">${p}</div></div>`).join('')}
+function openPunto(){const ov=document.createElement('div');ov.className='overlay'
+  ov.innerHTML=`<div class="modal"><h2>Nuevo punto de contacto</h2><div class="row2"><div class="field"><label>Tag</label><input class="inp" id="p_tag"/></div><div class="field"><label>Pieza</label><input class="inp" id="p_pieza"/></div></div>
+    <div class="row2"><div class="field"><label>Plataforma</label><select id="p_plat"><option>instagram</option><option>youtube</option><option>ads</option><option>otros</option></select></div><div class="field"><label>Fecha</label><input class="inp" id="p_fecha" type="date" value="${new Date().toISOString().slice(0,10)}"/></div></div>
+    <div class="row3"><div class="field"><label>Chats únicos</label><input class="inp" id="p_chats" type="number" value="0"/></div><div class="field"><label>Leads</label><input class="inp" id="p_leads" type="number" value="0"/></div><div class="field"><label>Calificados</label><input class="inp" id="p_cali" type="number" value="0"/></div></div>
+    <div class="row2"><div class="field"><label>Ventas</label><input class="inp" id="p_ventas" type="number" value="0"/></div><div class="field"><label>Generado (USD)</label><input class="inp" id="p_gen" type="number" value="0"/></div></div>
+    <div class="actions"><div class="grow"></div><button class="btn ghost" id="p_c">Cancelar</button><button class="btn primary" id="p_s">Guardar</button></div></div>`
+  document.body.appendChild(ov);const g=id=>ov.querySelector('#'+id);ov.onclick=e=>{if(e.target===ov)ov.remove()};g('p_c').onclick=()=>ov.remove()
+  g('p_s').onclick=async()=>{const{error}=await sb.from('puntos_contacto').insert({tag:g('p_tag').value.trim(),pieza:g('p_pieza').value.trim(),plataforma:g('p_plat').value,fecha:g('p_fecha').value,chats_unicos:+g('p_chats').value,leads:+g('p_leads').value,calificados:+g('p_cali').value,ventas:+g('p_ventas').value,generado:+g('p_gen').value});if(error){toast('Error: '+error.message);return};toast('Guardado ✓');ov.remove();renderMarketing()}}
+
+/* ================= COBROS ================= */
+let cobTab='cuotas'
+async function renderCobros(){view().innerHTML=head('COBROS','Cuotas y seguimientos')+`<div class="tabs"><span class="tab ${cobTab==='cuotas'?'on':''}" data-t="cuotas">Cuotas del programa</span><span class="tab ${cobTab==='pend'?'on':''}" data-t="pend">Seguimientos pendientes</span></div>
+  <div class="funnel" id="cbk"></div>
+  <div class="card"><h3>Cargar cuota manual</h3><p class="cdesc">Para upsells, resells o cobros puntuales.</p>
+    <div class="row3"><div class="field"><label>Lead / cliente</label><input class="inp" id="c_lead" placeholder="Nombre"/></div><div class="field"><label>Programa</label><input class="inp" id="c_prog"/></div><div class="field"><label>Origen</label><select id="c_org"><option>manual</option><option>upsell</option><option>resell</option></select></div></div>
+    <div class="row3"><div class="field"><label>Moneda</label><select id="c_mon">${MONEDAS.map(m=>`<option>${m}</option>`).join('')}</select></div><div class="field"><label>Monto</label><input class="inp" id="c_monto" type="number"/></div><div class="field"><label>Vencimiento</label><input class="inp" id="c_venc" type="date"/></div></div>
+    <div class="field"><label>Billetera</label><input class="inp" id="c_bill"/></div>
+    <div class="actions"><div class="grow"></div><button class="btn primary" id="c_add">Agregar cuota</button></div></div>
+  <div class="tablewrap"><table><thead><tr><th>Programa</th><th>Origen</th><th>Monto USD</th><th>Vencimiento</th><th>Estado</th><th></th></tr></thead><tbody id="crows"><tr><td colspan="6" class="empty">Cargando…</td></tr></tbody></table></div>`
+  document.querySelectorAll('[data-t]').forEach(t=>t.onclick=()=>{cobTab=t.dataset.t;renderCobros()})
+  document.getElementById('c_add').onclick=async()=>{const g=id=>document.getElementById(id),mon=g('c_mon').value,rate=await fxRate(mon),monto=Number(g('c_monto').value||0)
+    let leadId=null;if(g('c_lead').value.trim()){const{data}=await sb.from('leads').select('id').ilike('nombre',g('c_lead').value.trim()).limit(1);if(data&&data[0])leadId=data[0].id}
+    const{error}=await sb.from('cuotas').insert({lead_id:leadId,programa:g('c_prog').value.trim(),origen:g('c_org').value,moneda:mon,monto,monto_usd:monto/(rate||1),vencimiento:g('c_venc').value||null,billetera:g('c_bill').value.trim(),estado:'pendiente'})
+    if(error){toast('Error: '+error.message);return};toast('Cuota agregada ✓');renderCobros()}
+  // KPIs
+  const c=await cobrosResumen()
+  document.getElementById('cbk').innerHTML=[['Cobrado total',c.cobrado],['Al día',c.aldia],['Vencidas',c.vencidas],['Generado upsell',c.upsell],['Total activo',c.total]].map(([l,n])=>`<div class="fcell"><div class="n" style="font-size:24px">${money(n)}</div><div class="l">${l}</div></div>`).join('')
+  // tabla
+  const today=new Date().toISOString().slice(0,10);let q=sb.from('cuotas').select('*,leads(nombre)').order('vencimiento',{ascending:true}).limit(300)
+  if(cobTab==='pend')q=q.eq('estado','pendiente')
+  const{data}=await q;document.getElementById('crows').innerHTML=(data&&data.length)?data.map(c=>{const est=c.estado==='pendiente'&&c.vencimiento&&c.vencimiento<today?'vencido':c.estado
+    return `<tr><td class="nm">${esc(c.programa||'—')}<div class="sub2">${esc(c.leads?c.leads.nombre:'')}</div></td><td>${esc(c.origen||'')}</td><td class="nm">${money(c.monto_usd)}</td><td class="sub2">${esc(c.vencimiento||'—')}</td><td><span class="chip ${est}">${est}</span></td><td>${c.estado!=='cobrado'?`<button class="pg" data-cob="${c.id}">Marcar cobrada</button>`:'✓'}</td></tr>`}).join(''):`<tr><td colspan="6" class="empty">Sin cuotas.</td></tr>`
+  document.querySelectorAll('[data-cob]').forEach(b=>b.onclick=async()=>{await sb.from('cuotas').update({estado:'cobrado',cobrado_at:new Date().toISOString()}).eq('id',b.dataset.cob);toast('Cobrada ✓');renderCobros()})}
+
+/* ================= CALENDARIO ================= */
+async function renderCalendario(){view().innerHTML=head('AGENDA','Calendario')+`<div class="card"><div class="agenda" id="ag"></div></div>`
+  const{data:clases}=await sb.from('clases').select('*').order('fecha')
+  let sq=sb.from('seguimientos').select('*,leads(nombre)').eq('hecho',false).order('fecha_programada');if(!isMgr())sq=sq.eq('asesor_id',me.id)
+  const{data:segs}=await sq
+  const items=[]
+  ;(clases||[]).forEach(c=>c.fecha&&items.push({d:c.fecha.slice(0,10),tg:'CLASE',t:'Clase '+c.numero+(c.titulo?' — '+c.titulo:'')}))
+  ;(segs||[]).forEach(s=>s.fecha_programada&&items.push({d:s.fecha_programada,tg:'SEGUIMIENTO',t:(s.leads?s.leads.nombre:'Lead')+' — '+(s.nota||s.tipo||'')}))
+  items.sort((a,b)=>a.d.localeCompare(b.d))
+  const byDay={};items.forEach(i=>{(byDay[i.d]=byDay[i.d]||[]).push(i)})
+  const days=Object.keys(byDay)
+  document.getElementById('ag').innerHTML=days.length?days.map(d=>`<div class="day">${new Date(d+'T00:00').toLocaleDateString('es',{weekday:'long',day:'2-digit',month:'long'})}</div>${byDay[d].map(i=>`<div class="ev"><span class="tg">${i.tg}</span><span>${esc(i.t)}</span></div>`).join('')}`).join(''):`<div class="empty">No hay clases ni seguimientos agendados.</div>`}
+</script>
+</body></html>
