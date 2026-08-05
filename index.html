@@ -108,11 +108,14 @@ function fmtDate(s){if(!s)return'—';const d=new Date(s),n=new Date();if(d.toDa
 function view(){return document.getElementById('view')}
 
 /* ---------- BOOT ---------- */
+function renderError(e){root.innerHTML=`<div class="login"><div class="box"><div class="brand">${ROCKET}<div class="wm"><b>NAVE</b><span>Instituto · CRM</span></div></div><h1>Ups, algo falló al cargar</h1><p>${esc((e&&e.message)||e||'Error desconocido')}</p><button class="btn primary" style="width:100%" onclick="location.reload()">Reintentar</button><div class="alt"><a onclick="(async()=>{await sb.auth.signOut();location.reload()})()">Cerrar sesión y volver a entrar</a></div></div></div>`}
 if(!SUPABASE_URL||!SUPABASE_ANON_KEY){renderConfigNeeded()}
-else{sb=createClient(SUPABASE_URL,SUPABASE_ANON_KEY)
+else{try{sb=createClient(SUPABASE_URL,SUPABASE_ANON_KEY)
   const{data:{session}}=await sb.auth.getSession()
   if(session)await afterLogin(session);else renderLogin()
-  sb.auth.onAuthStateChange((_e,s)=>{if(!s)renderLogin()})}
+  sb.auth.onAuthStateChange((_e,s)=>{if(!s)renderLogin()})
+}catch(e){console.error('boot',e);renderError(e)}}
+window.addEventListener('error',ev=>console.error('window error',ev.error||ev.message))
 function renderConfigNeeded(){root.innerHTML=`<div class="login"><div class="box"><div class="brand">${ROCKET}<div class="wm"><b>NAVE</b><span>Instituto · CRM</span></div></div><h1>Falta conectar Supabase</h1><p>Completá <code>SUPABASE_URL</code> y <code>SUPABASE_ANON_KEY</code> arriba de <code>index.html</code> (Supabase → Settings → API) y volvé a deployar. El SQL está en <code>schema.sql</code>.</p></div></div>`}
 
 /* ---------- AUTH ---------- */
@@ -133,12 +136,12 @@ function renderLogin(){
     if(r.data.session)await afterLogin(r.data.session);else err.textContent='Revisá tu email para confirmar la cuenta.'}
 }
 async function afterLogin(session){me=session.user
-  const{data:prof}=await sb.from('profiles').select('*').eq('id',me.id).single()
-  myProfile=prof||{nombre:me.email,rol:'setter'}
-  await ensureLanzamiento();await ensureClases()
-  const{data:setters}=await sb.from('profiles').select('id,nombre,rol').eq('activo',true)
-  state.setters=setters||[]
-  if(!location.hash)location.hash='#/panel'
+  try{const{data:prof}=await sb.from('profiles').select('*').eq('id',me.id).maybeSingle();if(prof)myProfile=prof}catch(e){console.error('profile',e)}
+  if(!myProfile)myProfile={nombre:(me.email||'Usuario'),rol:'setter'}
+  try{await ensureLanzamiento()}catch(e){console.error('lanz',e)}
+  try{await ensureClases()}catch(e){console.error('clases',e)}
+  try{const{data:setters}=await sb.from('profiles').select('id,nombre,rol').eq('activo',true);state.setters=setters||[]}catch(e){console.error('setters',e)}
+  if(!location.hash||location.hash==='#')location.hash='#/panel'
   renderShell();route()}
 async function ensureLanzamiento(){let{data}=await sb.from('lanzamientos').select('*').eq('activo',true).order('created_at',{ascending:false}).limit(1)
   if(data&&data[0]){state.lanz=data[0];return}
