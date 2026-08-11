@@ -104,6 +104,10 @@ const money=n=>'US$ '+(Number(n||0)).toLocaleString('es',{minimumFractionDigits:
 const fmtCur=(n,mon)=>(mon||'USD')+' '+(Number(n||0)).toLocaleString('es',{minimumFractionDigits:2,maximumFractionDigits:2})
 const num=n=>(Number(n||0)).toLocaleString('es')
 const nameOf=id=>{const s=state.setters.find(x=>x.id===id);return s?s.nombre:null}
+const CANALES=[['lanzamiento','Lanzamiento'],['funnel','Funnel'],['referido','Referido']]
+function srcVentas(q,val){if(!val||val==='all')return q;if(val==='funnel'||val==='referido')return q.eq('canal',val);return q.eq('lanzamiento_id',val)}
+function srcEmbed(q,val){if(!val||val==='all')return q;if(val==='funnel'||val==='referido')return q.eq('ventas.canal',val);return q.eq('ventas.lanzamiento_id',val)}
+function srcOptions(sel,lanzs){return `<option value="all" ${sel==='all'?'selected':''}>Todos</option>`+(lanzs||[]).map(l=>`<option value="${l.id}" ${sel===l.id?'selected':''}>${lanzLabel(l)}</option>`).join('')+`<option value="funnel" ${sel==='funnel'?'selected':''}>Funnel</option><option value="referido" ${sel==='referido'?'selected':''}>Referidos</option>`}
 function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1900)}
 function fmtDate(s){if(!s)return'—';const d=new Date(s),n=new Date();if(d.toDateString()===n.toDateString())return'hoy '+d.toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'});return d.toLocaleDateString('es',{day:'2-digit',month:'2-digit'})}
 function view(){return document.getElementById('view')}
@@ -414,6 +418,7 @@ async function renderCobros(){view().innerHTML=head('COBROS','Cuotas y seguimien
 /* ================= VENTAS ================= */
 // Formulario de venta reutilizable (mismo en la sección Ventas y en el Reporte de llamada). p = prefijo de ids ('v_' o 'r_')
 function ventaFormHTML(p){return `
+  <div class="field"><label>Canal / origen</label><select id="${p}canal">${CANALES.map(c=>`<option value="${c[0]}">${c[1]}</option>`).join('')}</select><div class="sub2" style="margin-top:5px">Lanzamiento se asigna al lanzamiento activo. Funnel y Referido quedan aparte, no se mezclan.</div></div>
   <div class="row3"><div class="field"><label>Forma de pago</label><select id="${p}forma">${FORMAS.map(f=>`<option>${f}</option>`).join('')}</select></div>
     <div class="field"><label>Moneda</label><select id="${p}mon">${MONEDAS.map(m=>`<option>${m}</option>`).join('')}</select></div>
     <div class="field"><label>Billetera / medio</label><input class="inp" id="${p}bill"/></div></div>
@@ -447,7 +452,7 @@ function wireVentaForm(p){const g=id=>document.getElementById(p+id)
 // Lee los valores del formulario de venta
 function readVentaForm(p){const g=id=>document.getElementById(p+id),cuotas=[]
   document.querySelectorAll('#'+p+'cuotasBox [data-cuota]').forEach(r=>{const monto=Number(r.querySelector('.cuotaMonto').value||0),venc=r.querySelector('.cuotaVenc').value||null;if(monto>0)cuotas.push({monto,vencimiento:venc})})
-  return{forma:g('forma').value,moneda:g('mon').value,fx:(g('fx')&&Number(g('fx').value))||0,billetera:g('bill').value.trim(),programa:g('prog').value.trim(),setter:g('setter').value||null,closer:(g('closer')&&g('closer').value)||null,sena:(g('sena')&&g('sena').value)||null,ticket:Number(g('ticket').value||0),pago:Number(g('pago').value||0),cobrar:Number(g('cobrar').value||0),cuotas,file:(g('file').files&&g('file').files[0])||null}}
+  return{canal:(g('canal')&&g('canal').value)||'lanzamiento',forma:g('forma').value,moneda:g('mon').value,fx:(g('fx')&&Number(g('fx').value))||0,billetera:g('bill').value.trim(),programa:g('prog').value.trim(),setter:g('setter').value||null,closer:(g('closer')&&g('closer').value)||null,sena:(g('sena')&&g('sena').value)||null,ticket:Number(g('ticket').value||0),pago:Number(g('pago').value||0),cobrar:Number(g('cobrar').value||0),cuotas,file:(g('file').files&&g('file').files[0])||null}}
 // Sube el comprobante a Supabase Storage (bucket 'comprobantes') y devuelve la URL pública
 async function uploadComprobante(file){if(!file)return null
   const ext=(file.name.split('.').pop()||'bin').toLowerCase(),rnd=Math.random().toString(36).slice(2,8)
@@ -463,7 +468,8 @@ async function saveVenta(v){const rate=v.moneda==='USD'?1:(Number(v.fx)>0?Number
   const origen=v.reporteId?'closing':'venta'
   const closerId=v.closer||v.closerId||me.id,setterId=v.setterId||v.setter||null
   const com_setter_pct=setterId?pctOf(setterId,'com_setter_pct'):0,com_closer_pct=pctOf(closerId,'com_closer_pct')
-  const venta={lanzamiento_id:state.lanz?state.lanz.id:null,lead_id:v.leadId||null,cliente:v.cliente||null,closer_id:closerId,setter_id:setterId,com_setter_pct,com_closer_pct,reporte_id:v.reporteId||null,programa:v.programa||null,moneda:v.moneda,cotizacion:rate,ticket:v.ticket,pagado:v.pago,a_cobrar:v.cobrar,forma_pago:v.forma,billetera:v.billetera||null,comprobante_url,origen}
+  const canal=v.canal||'lanzamiento',lanzId=canal==='lanzamiento'?(state.lanz?state.lanz.id:null):null
+  const venta={lanzamiento_id:lanzId,canal,lead_id:v.leadId||null,cliente:v.cliente||null,closer_id:closerId,setter_id:setterId,com_setter_pct,com_closer_pct,reporte_id:v.reporteId||null,programa:v.programa||null,moneda:v.moneda,cotizacion:rate,ticket:v.ticket,pagado:v.pago,a_cobrar:v.cobrar,forma_pago:v.forma,billetera:v.billetera||null,comprobante_url,origen}
   let ventaId=v.editId
   if(v.editId){
     const{data:oc}=await sb.from('cuotas').select('id').eq('venta_id',v.editId)
@@ -490,17 +496,22 @@ async function deleteVenta(id){
   await sb.from('senas').update({estado:'registrada',venta_id:null}).eq('venta_id',id)
   const{error}=await sb.from('ventas').delete().eq('id',id);if(error)throw error}
 async function deleteSena(id){const{error}=await sb.from('senas').delete().eq('id',id);if(error)throw error}
-async function renderVentas(){view().innerHTML=head('VENTAS · '+esc((state.lanz&&state.lanz.nombre)||'LANZAMIENTO'),'Ventas','<button class="btn primary" id="v_new">+ Cargar venta</button>')
+async function renderVentas(){
+  const{data:lanzs}=await sb.from('lanzamientos').select('id,numero,nombre').order('numero',{ascending:true,nullsFirst:false})
+  view().innerHTML=head('VENTAS','Ventas',`<select class="pill" id="v_src" style="margin-right:8px">${srcOptions(ventasSrc,lanzs)}</select><button class="btn primary" id="v_new">+ Cargar venta</button>`)
   +`<div class="funnel" id="vk"></div>
-    <div class="tablewrap"><table><thead><tr><th>Cliente</th><th>Fecha</th><th>Programa</th><th>Forma</th><th>Ticket</th><th>Pagó</th><th>A cobrar</th><th>Comprobante</th></tr></thead><tbody id="vrows"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table></div>`
+    <div class="tablewrap"><table><thead><tr><th>Cliente</th><th>Canal</th><th>Fecha</th><th>Programa</th><th>Forma</th><th>Ticket</th><th>Pagó</th><th>A cobrar</th><th>Comprobante</th></tr></thead><tbody id="vrows"><tr><td colspan="9" class="empty">Cargando…</td></tr></tbody></table></div>`
   document.getElementById('v_new').onclick=()=>openVentaModal()
+  document.getElementById('v_src').onchange=e=>{ventasSrc=e.target.value;renderVentas()}
   let q=sb.from('ventas').select('*,leads(nombre)').order('fecha',{ascending:false}).limit(300);if(!isMgr())q=q.eq('closer_id',me.id)
+  q=srcVentas(q,ventasSrc)
   const{data,error}=await q
-  if(error){document.getElementById('vrows').innerHTML=`<tr><td colspan="8" class="empty">Error: ${esc(error.message)}</td></tr>`;return}
+  if(error){document.getElementById('vrows').innerHTML=`<tr><td colspan="9" class="empty">Error: ${esc(error.message)}</td></tr>`;return}
   const sumUsd=k=>(data||[]).reduce((a,x)=>a+Number(x[k]||0)/(Number(x.cotizacion)||1),0)
   const cells=[['Ventas',(data||[]).length],['Ticket total',money(sumUsd('ticket'))],['Cobrado',money(sumUsd('pagado'))],['A cobrar',money(sumUsd('a_cobrar'))]]
   document.getElementById('vk').innerHTML=cells.map(([l,n])=>`<div class="fcell"><div class="n" style="font-size:24px">${typeof n==='number'?num(n):n}</div><div class="l">${l}</div></div>`).join('')
-  document.getElementById('vrows').innerHTML=(data&&data.length)?data.map(v=>`<tr class="clk" data-id="${v.id}"><td class="nm">${esc(v.leads?v.leads.nombre:(v.cliente||'—'))}</td><td class="sub2">${fmtDate(v.fecha)}</td><td>${esc(v.programa||'—')}</td><td>${esc(v.forma_pago||'—')}</td><td class="nm">${money((v.ticket||0)/(v.cotizacion||1))}</td><td>${money((v.pagado||0)/(v.cotizacion||1))}</td><td>${money((v.a_cobrar||0)/(v.cotizacion||1))}</td><td>${v.comprobante_url?`<a href="${esc(v.comprobante_url)}" target="_blank" rel="noopener">ver</a>`:'<span class="sub2">—</span>'}</td></tr>`).join(''):`<tr><td colspan="8" class="empty">Sin ventas cargadas todavía.</td></tr>`
+  const canalLbl=c=>c==='funnel'?'Funnel':c==='referido'?'Referido':'Lanzamiento'
+  document.getElementById('vrows').innerHTML=(data&&data.length)?data.map(v=>`<tr class="clk" data-id="${v.id}"><td class="nm">${esc(v.leads?v.leads.nombre:(v.cliente||'—'))}</td><td class="sub2">${canalLbl(v.canal)}</td><td class="sub2">${fmtDate(v.fecha)}</td><td>${esc(v.programa||'—')}</td><td>${esc(v.forma_pago||'—')}</td><td class="nm">${money((v.ticket||0)/(v.cotizacion||1))}</td><td>${money((v.pagado||0)/(v.cotizacion||1))}</td><td>${money((v.a_cobrar||0)/(v.cotizacion||1))}</td><td>${v.comprobante_url?`<a href="${esc(v.comprobante_url)}" target="_blank" rel="noopener">ver</a>`:'<span class="sub2">—</span>'}</td></tr>`).join(''):`<tr><td colspan="9" class="empty">Sin ventas en este origen.</td></tr>`
   document.querySelectorAll('#vrows tr[data-id]').forEach(tr=>tr.onclick=e=>{if(e.target.tagName==='A')return;openVentaModal(data.find(x=>x.id===tr.dataset.id))})}
 async function openVentaModal(venta){const isEdit=!!venta
   const{data:leads}=await sb.from('leads').select('id,nombre,asesor_id').in('estado',['Agendó','Asistió','Confirmó clase','Cerrado']).order('updated_at',{ascending:false}).limit(300)
@@ -519,6 +530,7 @@ async function openVentaModal(venta){const isEdit=!!venta
   vSenas=await loadSenaOptions('v_')
   if(isEdit){
     vLead.value=venta.lead_id||'';gid('cliente').value=venta.cliente||''
+    gid('canal').value=venta.canal||'lanzamiento'
     gid('forma').value=venta.forma_pago||'Un pago'
     gid('mon').value=venta.moneda||'USD'
     if(venta.moneda&&venta.moneda!=='USD'){gid('fxWrap').style.display='';gid('fxLbl').textContent='Cotización (1 USD = ? '+venta.moneda+')';gid('fx').value=venta.cotizacion||''}
@@ -595,15 +607,14 @@ async function openSenaModal(sena){const isEdit=!!sena
 async function renderFacturacion(){
   const{data:lanzs}=await sb.from('lanzamientos').select('id,numero,nombre').order('numero',{ascending:true,nullsFirst:false})
   if(facLanzFilter===null)facLanzFilter=(state.lanz&&state.lanz.id)||'all'
-  const opts=`<option value="all">Todos los lanzamientos</option>`+(lanzs||[]).map(l=>`<option value="${l.id}" ${facLanzFilter===l.id?'selected':''}>${lanzLabel(l)}</option>`).join('')
-  view().innerHTML=head('FACTURACIÓN','Facturación y cash collected',`<select class="pill" id="fc_lanz">${opts}</select>`)+`<div class="funnel" id="fk"></div><div id="facBody"><div class="empty" style="padding:24px">Cargando…</div></div>`
+  view().innerHTML=head('FACTURACIÓN','Facturación y cash collected',`<select class="pill" id="fc_lanz">${srcOptions(facLanzFilter,lanzs)}</select>`)+`<div class="funnel" id="fk"></div><div id="facBody"><div class="empty" style="padding:24px">Cargando…</div></div>`
   document.getElementById('fc_lanz').onchange=e=>{facLanzFilter=e.target.value;renderFacturacion()}
-  let vq=sb.from('ventas').select('id,moneda,ticket,cotizacion');if(facLanzFilter!=='all')vq=vq.eq('lanzamiento_id',facLanzFilter)
+  let vq=srcVentas(sb.from('ventas').select('id,moneda,ticket,cotizacion'),facLanzFilter)
   const{data:ventas,error}=await vq
   if(error){document.getElementById('facBody').innerHTML=`<div class="empty" style="padding:24px">Error: ${esc(error.message)}</div>`;return}
-  let cq=sb.from('cuotas').select('monto,monto_usd,estado,moneda,billetera,venta_id,ventas!inner(lanzamiento_id)');if(facLanzFilter!=='all')cq=cq.eq('ventas.lanzamiento_id',facLanzFilter)
+  let cq=srcEmbed(sb.from('cuotas').select('monto,monto_usd,estado,moneda,billetera,venta_id,ventas!inner(lanzamiento_id,canal)'),facLanzFilter)
   const{data:cuotas}=await cq
-  let sq=sb.from('senas').select('monto,monto_usd,moneda,billetera,venta_id,ventas!inner(lanzamiento_id)').eq('estado','aplicada');if(facLanzFilter!=='all')sq=sq.eq('ventas.lanzamiento_id',facLanzFilter)
+  let sq=srcEmbed(sb.from('senas').select('monto,monto_usd,moneda,billetera,venta_id,ventas!inner(lanzamiento_id,canal)').eq('estado','aplicada'),facLanzFilter)
   const{data:senas}=await sq
   // acumular por moneda
   const M={} // moneda -> {fact,factUsd,cash,cashUsd,pend,pendUsd}
@@ -636,13 +647,12 @@ async function renderFacturacion(){
   document.getElementById('facBody').innerHTML=cards+total+wallets}
 
 /* ================= COMISIONES ================= */
-let comLanzFilter=null,COM_LINES=[],COM_PAID=new Set(),facLanzFilter=null
+let comLanzFilter=null,COM_LINES=[],COM_PAID=new Set(),facLanzFilter=null,ventasSrc='all'
 const lanzLabel=l=>(l.numero!=null?('N° '+l.numero+' · '):'')+esc(l.nombre||'Lanzamiento')
 async function renderComisiones(){
   const{data:lanzs}=await sb.from('lanzamientos').select('id,numero,nombre').order('numero',{ascending:true,nullsFirst:false})
   if(comLanzFilter===null)comLanzFilter=(state.lanz&&state.lanz.id)||'all'
-  const opts=`<option value="all">Todos los lanzamientos</option>`+(lanzs||[]).map(l=>`<option value="${l.id}" ${comLanzFilter===l.id?'selected':''}>${lanzLabel(l)}</option>`).join('')
-  const actions=`<select class="pill" id="cm_lanz" style="margin-right:8px">${opts}</select>${isMgr()?'<button class="btn ghost" id="cm_lanzmgr">Lanzamientos</button>':''}`
+  const actions=`<select class="pill" id="cm_lanz" style="margin-right:8px">${srcOptions(comLanzFilter,lanzs)}</select>${isMgr()?'<button class="btn ghost" id="cm_lanzmgr">Lanzamientos</button>':''}`
   view().innerHTML=head('COMISIONES','Comisiones',actions)+`<div id="cfgWrap"></div><div class="funnel" id="ck"></div>
     <div class="split">
       <div class="card" style="margin:0"><h3>Setters</h3><p class="cdesc">Comisión por el lead trabajado / agendado.</p><div id="setTbl"><div class="empty" style="padding:24px">Cargando…</div></div></div>
@@ -653,19 +663,17 @@ async function renderComisiones(){
   const nb=document.getElementById('cm_lanzmgr');if(nb)nb.onclick=openLanzModal
   if(isMgr())renderComConfig()
   let vq=sb.from('ventas').select('id,cliente,lead_id,leads(nombre),setter_id,closer_id,com_setter_pct,com_closer_pct,lanzamiento_id')
-  if(comLanzFilter!=='all')vq=vq.eq('lanzamiento_id',comLanzFilter)
+  vq=srcVentas(vq,comLanzFilter)
   const{data:ventas,error:ve}=await vq
   if(ve){document.getElementById('setTbl').innerHTML=`<div class="empty" style="padding:24px">Error: ${esc(ve.message)}</div>`;return}
   const vmap={};(ventas||[]).forEach(v=>vmap[v.id]=v)
-  let q=sb.from('cuotas').select('id,monto_usd,venta_id,ventas!inner(lanzamiento_id)').eq('estado','cobrado').limit(10000)
-  if(comLanzFilter!=='all')q=q.eq('ventas.lanzamiento_id',comLanzFilter)
+  let q=sb.from('cuotas').select('id,monto_usd,venta_id,ventas!inner(lanzamiento_id,canal)').eq('estado','cobrado').limit(10000)
+  q=srcEmbed(q,comLanzFilter)
   const{data:cuotas}=await q
-  let sq=sb.from('senas').select('id,monto_usd,venta_id,ventas!inner(lanzamiento_id)').eq('estado','aplicada').limit(10000)
-  if(comLanzFilter!=='all')sq=sq.eq('ventas.lanzamiento_id',comLanzFilter)
+  let sq=sb.from('senas').select('id,monto_usd,venta_id,ventas!inner(lanzamiento_id,canal)').eq('estado','aplicada').limit(10000)
+  sq=srcEmbed(sq,comLanzFilter)
   const{data:senas}=await sq
-  let pq=sb.from('comision_pagos').select('origen_tipo,origen_id,rol').limit(20000)
-  if(comLanzFilter!=='all')pq=pq.eq('lanzamiento_id',comLanzFilter)
-  const{data:pagos}=await pq
+  const{data:pagos}=await sb.from('comision_pagos').select('origen_tipo,origen_id,rol').limit(20000)
   const paid=new Set((pagos||[]).map(p=>p.origen_tipo+':'+p.origen_id+':'+p.rol))
   const lines=[],ventasConCobro=new Set()
   const push=(tipo,id,base,v)=>{const label=(v.leads&&v.leads.nombre)||v.cliente||'—'
