@@ -656,7 +656,7 @@ async function renderComisiones(){
   const{data:lanzs}=await sb.from('lanzamientos').select('id,numero,nombre').order('numero',{ascending:true,nullsFirst:false})
   if(comLanzFilter===null)comLanzFilter=(state.lanz&&state.lanz.id)||'all'
   const actions=`<select class="pill" id="cm_lanz" style="margin-right:8px">${srcOptions(comLanzFilter,lanzs)}</select>${isMgr()?'<button class="btn ghost" id="cm_lanzmgr">Lanzamientos</button>':''}`
-  view().innerHTML=head('COMISIONES','Comisiones',actions)+`<div id="cfgWrap"></div><div class="funnel" id="ck"></div>
+  view().innerHTML=head('COMISIONES','Comisiones',actions)+`<div id="cfgWrap"></div><div class="funnel" id="ck"></div><div id="comResumen"></div>
     <div class="split">
       <div class="card" style="margin:0"><h3>Setters</h3><p class="cdesc">Comisión por el lead trabajado / agendado.</p><div id="setTbl"><div class="empty" style="padding:24px">Cargando…</div></div></div>
       <div class="card" style="margin:0"><h3>Closers</h3><p class="cdesc">Comisión por la venta cerrada.</p><div id="cloTbl"><div class="empty" style="padding:24px">Cargando…</div></div></div>
@@ -665,6 +665,7 @@ async function renderComisiones(){
   document.getElementById('cm_lanz').onchange=e=>{comLanzFilter=e.target.value;renderComisiones()}
   const nb=document.getElementById('cm_lanzmgr');if(nb)nb.onclick=openLanzModal
   if(isMgr())renderComConfig()
+  renderComResumen()
   let vq=sb.from('ventas').select('id,cliente,lead_id,leads(nombre),setter_id,closer_id,com_setter_pct,com_closer_pct,lanzamiento_id')
   vq=srcVentas(vq,comLanzFilter)
   const{data:ventas,error:ve}=await vq
@@ -690,14 +691,14 @@ async function renderComisiones(){
   const tot=o=>Object.values(o).reduce((a,x)=>({dev:a.dev+x.dev,pag:a.pag+x.pag}),{dev:0,pag:0})
   const ts=tot(setAgg),tc=tot(cloAgg),dev=ts.dev+tc.dev,pag=ts.pag+tc.pag
   document.getElementById('ck').innerHTML=[['Ganado',money(dev)],['Pagado',money(pag)],['Pendiente',money(dev-pag)]].map(([l,n])=>`<div class="fcell"><div class="n" style="font-size:24px">${n}</div><div class="l">${l}</div></div>`).join('')
-  const tbl=(o,rol)=>{const list=Object.keys(o).map(id=>{const p=state.setters.find(x=>x.id===id);return{id,nombre:(p&&p.nombre)||'—',dev:o[id].dev,pag:o[id].pag,pend:o[id].dev-o[id].pag}}).sort((a,b)=>b.pend-a.pend)
+  const tbl=(o,rol)=>{const list=Object.keys(o).map(id=>{const p=state.setters.find(x=>x.id===id);return{id,nombre:(p&&p.nombre)||'—',dev:o[id].dev,pag:o[id].pag,pend:o[id].dev-o[id].pag}}).filter(r=>r.dev>0.005).sort((a,b)=>b.pend-a.pend)
     return list.length?`<div class="tablewrap" style="margin:0"><table><thead><tr><th>Persona</th><th>Ganado</th><th>Pagado</th><th>Pend.</th><th></th></tr></thead><tbody>${list.map(r=>`<tr><td><span class="nm" data-det="${rol}|${r.id}" style="cursor:pointer;border-bottom:1px dotted var(--faint)">${esc(r.nombre)}</span></td><td>${money(r.dev)}</td><td>${money(r.pag)}</td><td class="nm" style="color:${r.pend>0.001?'var(--warn)':'var(--good)'}">${money(r.pend)}</td><td><button class="pg" data-det="${rol}|${r.id}">ver ventas</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty" style="padding:24px">Sin comisiones en este lanzamiento.</div>`}
   document.getElementById('setTbl').innerHTML=tbl(setAgg,'setter')
   document.getElementById('cloTbl').innerHTML=tbl(cloAgg,'closer')
   document.querySelectorAll('[data-det]').forEach(b=>b.onclick=()=>{const parts=b.dataset.det.split('|');openComDetalle(parts[0],parts[1])})}
 function openComDetalle(rol,personaId){
   const p=state.setters.find(x=>x.id===personaId),nombre=(p&&p.nombre)||'—'
-  const mine=COM_LINES.filter(l=>l.rol===rol&&l.personaId===personaId)
+  const mine=COM_LINES.filter(l=>l.rol===rol&&l.personaId===personaId&&l.monto>0.005)
   const ov=document.createElement('div');ov.className='overlay';let changed=false
   const keyOf=l=>l.tipo+':'+l.id+':'+l.rol
   const groups=()=>{const g={},ord=[];mine.forEach((l,i)=>{const k=String(l.ventaId);if(!g[k]){g[k]={label:l.label,items:[]};ord.push(k)}g[k].items.push({l,i})});return{g,ord}}
@@ -726,6 +727,27 @@ function openComDetalle(rol,personaId){
   if(isMgr()){const ab=ov.querySelector('#cd_all');if(ab)ab.onclick=async()=>{for(const l of mine){if(!COM_PAID.has(keyOf(l)))await setPaid(l,true)}draw();toast('Marcadas ✓')}}
   const close=()=>{ov.remove();if(changed)renderComisiones()}
   ov.onclick=e=>{if(e.target===ov)close()};ov.querySelector('#cd_close').onclick=close}
+async function renderComResumen(){const el=document.getElementById('comResumen');if(!el)return
+  const{data:lanzs}=await sb.from('lanzamientos').select('id,numero,nombre')
+  const lmap={};(lanzs||[]).forEach(l=>lmap[l.id]=l)
+  const{data:ventas}=await sb.from('ventas').select('id,lanzamiento_id,canal,setter_id,closer_id,com_setter_pct,com_closer_pct').limit(10000)
+  const vmap={};(ventas||[]).forEach(v=>vmap[v.id]=v)
+  const{data:cuotas}=await sb.from('cuotas').select('id,monto_usd,venta_id').eq('estado','cobrado').limit(10000)
+  const{data:senas}=await sb.from('senas').select('id,monto_usd,venta_id').eq('estado','aplicada').limit(10000)
+  const{data:pagos}=await sb.from('comision_pagos').select('origen_tipo,origen_id,rol').limit(20000)
+  const paid=new Set((pagos||[]).map(p=>p.origen_tipo+':'+p.origen_id+':'+p.rol))
+  const bucketOf=v=>(v.canal&&v.canal!=='lanzamiento')?v.canal:(v.lanzamiento_id||'sin')
+  const B={},add=(tipo,id,monto,v)=>{const b=bucketOf(v),o=B[b]=B[b]||{gan:0,pag:0}
+    ;['setter','closer'].forEach(rol=>{const pid=rol==='setter'?v.setter_id:v.closer_id;if(!pid)return;const pct=Number(rol==='setter'?v.com_setter_pct:v.com_closer_pct)||0,com=monto*pct/100;if(com<=0.005)return;o.gan+=com;if(paid.has(tipo+':'+id+':'+rol))o.pag+=com})}
+  const conCobro=new Set()
+  ;(cuotas||[]).forEach(c=>{const v=vmap[c.venta_id];if(!v)return;conCobro.add(c.venta_id);add('cuota',c.id,Number(c.monto_usd||0),v)})
+  ;(senas||[]).forEach(s=>{const v=vmap[s.venta_id];if(!v||!conCobro.has(s.venta_id))return;add('sena',s.id,Number(s.monto_usd||0),v)})
+  const label=b=>b==='funnel'?'Funnel':b==='referido'?'Referidos':b==='sin'?'Sin lanzamiento':(lmap[b]?lanzLabel(lmap[b]):'Lanzamiento')
+  const keys=Object.keys(B).sort((a,b)=>(B[b].gan-B[b].pag)-(B[a].gan-B[a].pag))
+  const totPend=keys.reduce((t,b)=>t+(B[b].gan-B[b].pag),0)
+  el.innerHTML=`<div class="card" style="margin:0 30px 20px"><h3>A pagar por origen <span class="sub2" style="font-weight:400">· pendiente total ${money(totPend)}</span></h3><p class="cdesc">Comisiones por lanzamiento / funnel / referidos. Tocá una fila para filtrar abajo.</p>
+    <div class="tablewrap" style="margin:0"><table><thead><tr><th>Origen</th><th>Ganado</th><th>Pagado</th><th>Pendiente</th></tr></thead><tbody>${keys.length?keys.map(b=>`<tr class="clk" data-src="${b==='funnel'||b==='referido'?b:(b==='sin'?'all':b)}"><td class="nm">${esc(label(b))}</td><td>${money(B[b].gan)}</td><td>${money(B[b].pag)}</td><td class="nm" style="color:${(B[b].gan-B[b].pag)>0.005?'var(--warn)':'var(--good)'}">${money(B[b].gan-B[b].pag)}</td></tr>`).join(''):'<tr><td colspan="4" class="empty">Sin comisiones todavía.</td></tr>'}</tbody></table></div></div>`
+  el.querySelectorAll('tr[data-src]').forEach(tr=>tr.onclick=()=>{comLanzFilter=tr.dataset.src;renderComisiones()})}
 async function openLanzModal(){
   const{data:lanzs}=await sb.from('lanzamientos').select('*').order('numero',{ascending:true,nullsFirst:false}).order('created_at')
   const ov=document.createElement('div');ov.className='overlay'
@@ -748,11 +770,12 @@ async function openLanzModal(){
     const{data,error}=await sb.from('lanzamientos').insert({numero:num!==''?Number(num):null,nombre:nom,activo:true}).select().single();if(error){toast('Error: '+error.message);return}
     state.lanz=data;comLanzFilter=data.id;toast('Lanzamiento creado ✓');ov.remove();renderComisiones()}}
 async function renderComConfig(){const{data:profs}=await sb.from('profiles').select('id,nombre,rol,com_setter_pct,com_closer_pct').eq('activo',true).order('rol')
-  document.getElementById('cfgWrap').innerHTML=`<div class="card"><h3>Porcentajes por persona</h3><p class="cdesc">Se aplican a las próximas ventas. Las ya cargadas conservan el % con el que se guardaron.</p>
-    <div class="tablewrap" style="margin:0"><table><thead><tr><th>Persona</th><th>Rol</th><th>% como setter</th><th>% como closer</th><th></th></tr></thead><tbody>${(profs||[]).map(p=>`<tr data-p="${p.id}"><td class="nm">${esc(p.nombre)}</td><td class="sub2">${esc(p.rol)}</td><td><input class="inp cs" type="number" step="0.5" value="${p.com_setter_pct||0}" style="max-width:110px"/></td><td><input class="inp cc" type="number" step="0.5" value="${p.com_closer_pct||0}" style="max-width:110px"/></td><td><button class="pg" data-save="${p.id}">Guardar</button></td></tr>`).join('')}</tbody></table></div></div>`
-  document.querySelectorAll('[data-save]').forEach(b=>b.onclick=async()=>{const tr=b.closest('tr'),cs=Number(tr.querySelector('.cs').value||0),cc=Number(tr.querySelector('.cc').value||0)
-    const{error}=await sb.from('profiles').update({com_setter_pct:cs,com_closer_pct:cc}).eq('id',b.dataset.save);if(error){toast('Error: '+error.message);return}
-    const s=state.setters.find(x=>x.id===b.dataset.save);if(s){s.com_setter_pct=cs;s.com_closer_pct=cc};toast('Guardado ✓')})}
+  const ROLES=['setter','closer','manager','admin']
+  document.getElementById('cfgWrap').innerHTML=`<div class="card"><h3>Equipo · roles y comisiones</h3><p class="cdesc">Cambiá el rol y el % de cada persona. Los % se aplican a las próximas ventas (las ya cargadas conservan el suyo).</p>
+    <div class="tablewrap" style="margin:0"><table><thead><tr><th>Persona</th><th>Rol</th><th>% como setter</th><th>% como closer</th><th></th></tr></thead><tbody>${(profs||[]).map(p=>`<tr data-p="${p.id}"><td class="nm">${esc(p.nombre)}</td><td><select class="rol">${ROLES.map(r=>`<option ${p.rol===r?'selected':''}>${r}</option>`).join('')}</select></td><td><input class="inp cs" type="number" step="0.5" value="${p.com_setter_pct||0}" style="max-width:110px"/></td><td><input class="inp cc" type="number" step="0.5" value="${p.com_closer_pct||0}" style="max-width:110px"/></td><td><button class="pg" data-save="${p.id}">Guardar</button></td></tr>`).join('')}</tbody></table></div></div>`
+  document.querySelectorAll('[data-save]').forEach(b=>b.onclick=async()=>{const tr=b.closest('tr'),rol=tr.querySelector('.rol').value,cs=Number(tr.querySelector('.cs').value||0),cc=Number(tr.querySelector('.cc').value||0)
+    const{error}=await sb.from('profiles').update({rol,com_setter_pct:cs,com_closer_pct:cc}).eq('id',b.dataset.save);if(error){toast('Error: '+error.message);return}
+    const s=state.setters.find(x=>x.id===b.dataset.save);if(s){s.rol=rol;s.com_setter_pct=cs;s.com_closer_pct=cc};toast('Guardado ✓')})}
 
 /* ================= CALENDARIO ================= */
 async function renderCalendario(){view().innerHTML=head('AGENDA','Calendario')+`<div class="card"><div class="agenda" id="ag"></div></div>`
