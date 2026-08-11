@@ -418,8 +418,9 @@ function ventaFormHTML(p){return `
     <div class="field"><label>Moneda</label><select id="${p}mon">${MONEDAS.map(m=>`<option>${m}</option>`).join('')}</select></div>
     <div class="field"><label>Billetera / medio</label><input class="inp" id="${p}bill"/></div></div>
   <div class="field" id="${p}fxWrap" style="display:none"><label id="${p}fxLbl">Cotización</label><input class="inp" id="${p}fx" type="number" placeholder="0"/><div class="sub2" style="margin-top:5px">Cuántos de esa moneda equivalen a 1 USD (ej: 1 USD = 1000 ARS → poné 1000). Convierte ticket, cash y comisión a USD.</div></div>
-  <div class="row2"><div class="field"><label>Programa</label><input class="inp" id="${p}prog" placeholder="Programa vendido"/></div>
-    <div class="field"><label>Setter (comisión)</label><select id="${p}setter"><option value="">— sin setter —</option>${state.setters.map(s=>`<option value="${s.id}">${esc(s.nombre)}</option>`).join('')}</select></div></div>
+  <div class="field"><label>Programa</label><input class="inp" id="${p}prog" placeholder="Programa vendido"/></div>
+  <div class="row2"><div class="field"><label>Setter (comisión)</label><select id="${p}setter"><option value="">— sin setter —</option>${state.setters.map(s=>`<option value="${s.id}">${esc(s.nombre)}</option>`).join('')}</select></div>
+    <div class="field"><label>Closer (comisión)</label><select id="${p}closer"><option value="">— sin closer —</option>${state.setters.map(s=>`<option value="${s.id}" ${s.id===(me&&me.id)?'selected':''}>${esc(s.nombre)}</option>`).join('')}</select></div></div>
   <div class="row3"><div class="field"><label>Ticket (total)</label><input class="inp" id="${p}ticket" type="number" placeholder="0"/></div>
     <div class="field"><label>Dinero que pagó</label><input class="inp" id="${p}pago" type="number" placeholder="0"/></div>
     <div class="field"><label>Dinero a cobrar</label><input class="inp" id="${p}cobrar" type="number" placeholder="0"/></div></div>
@@ -446,7 +447,7 @@ function wireVentaForm(p){const g=id=>document.getElementById(p+id)
 // Lee los valores del formulario de venta
 function readVentaForm(p){const g=id=>document.getElementById(p+id),cuotas=[]
   document.querySelectorAll('#'+p+'cuotasBox [data-cuota]').forEach(r=>{const monto=Number(r.querySelector('.cuotaMonto').value||0),venc=r.querySelector('.cuotaVenc').value||null;if(monto>0)cuotas.push({monto,vencimiento:venc})})
-  return{forma:g('forma').value,moneda:g('mon').value,fx:(g('fx')&&Number(g('fx').value))||0,billetera:g('bill').value.trim(),programa:g('prog').value.trim(),setter:g('setter').value||null,sena:(g('sena')&&g('sena').value)||null,ticket:Number(g('ticket').value||0),pago:Number(g('pago').value||0),cobrar:Number(g('cobrar').value||0),cuotas,file:(g('file').files&&g('file').files[0])||null}}
+  return{forma:g('forma').value,moneda:g('mon').value,fx:(g('fx')&&Number(g('fx').value))||0,billetera:g('bill').value.trim(),programa:g('prog').value.trim(),setter:g('setter').value||null,closer:(g('closer')&&g('closer').value)||null,sena:(g('sena')&&g('sena').value)||null,ticket:Number(g('ticket').value||0),pago:Number(g('pago').value||0),cobrar:Number(g('cobrar').value||0),cuotas,file:(g('file').files&&g('file').files[0])||null}}
 // Sube el comprobante a Supabase Storage (bucket 'comprobantes') y devuelve la URL pública
 async function uploadComprobante(file){if(!file)return null
   const ext=(file.name.split('.').pop()||'bin').toLowerCase(),rnd=Math.random().toString(36).slice(2,8)
@@ -460,7 +461,7 @@ async function saveVenta(v){const rate=v.moneda==='USD'?1:(Number(v.fx)>0?Number
   let comprobante_url=v.currentComprobante||null
   if(v.file)comprobante_url=await uploadComprobante(v.file)
   const origen=v.reporteId?'closing':'venta'
-  const closerId=v.closerId||me.id,setterId=v.setterId||v.setter||null
+  const closerId=v.closer||v.closerId||me.id,setterId=v.setterId||v.setter||null
   const com_setter_pct=setterId?pctOf(setterId,'com_setter_pct'):0,com_closer_pct=pctOf(closerId,'com_closer_pct')
   const venta={lanzamiento_id:state.lanz?state.lanz.id:null,lead_id:v.leadId||null,cliente:v.cliente||null,closer_id:closerId,setter_id:setterId,com_setter_pct,com_closer_pct,reporte_id:v.reporteId||null,programa:v.programa||null,moneda:v.moneda,cotizacion:rate,ticket:v.ticket,pagado:v.pago,a_cobrar:v.cobrar,forma_pago:v.forma,billetera:v.billetera||null,comprobante_url,origen}
   let ventaId=v.editId
@@ -523,6 +524,7 @@ async function openVentaModal(venta){const isEdit=!!venta
     if(venta.moneda&&venta.moneda!=='USD'){gid('fxWrap').style.display='';gid('fxLbl').textContent='Cotización (1 USD = ? '+venta.moneda+')';gid('fx').value=venta.cotizacion||''}
     gid('bill').value=venta.billetera||'';gid('prog').value=venta.programa||''
     if(venta.setter_id)gid('setter').value=venta.setter_id
+    if(venta.closer_id)gid('closer').value=venta.closer_id
     gid('ticket').value=venta.ticket!=null?venta.ticket:'';gid('pago').value=venta.pagado!=null?venta.pagado:''
     gid('forma').dispatchEvent(new Event('change'))
     const{data:pc}=await sb.from('cuotas').select('monto,vencimiento').eq('venta_id',venta.id).eq('estado','pendiente').order('vencimiento')
