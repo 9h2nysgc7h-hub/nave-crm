@@ -101,6 +101,7 @@ const esc=s=>(s??'').toString().replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>
 const initials=n=>(n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase()
 const isMgr=()=>myProfile&&(myProfile.rol==='manager'||myProfile.rol==='admin')
 const money=n=>'US$ '+(Number(n||0)).toLocaleString('es',{minimumFractionDigits:2,maximumFractionDigits:2})
+const fmtCur=(n,mon)=>(mon||'USD')+' '+(Number(n||0)).toLocaleString('es',{minimumFractionDigits:2,maximumFractionDigits:2})
 const num=n=>(Number(n||0)).toLocaleString('es')
 const nameOf=id=>{const s=state.setters.find(x=>x.id===id);return s?s.nombre:null}
 function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1900)}
@@ -152,7 +153,7 @@ const NAV=[
   {g:'Closer',items:[['#/triage','Triage'],['#/reporte','Reporte de llamadas'],['#/grilla','Grilla de reportes']]},
   {g:'Ventas',items:[['#/ventas','Ventas'],['#/senas','Señas']]},
   {g:'Marketing',items:[['#/marketing','Rendimiento de contenido']]},
-  {g:'Cobros',items:[['#/cobros','Cuotas y seguimientos'],['#/comisiones','Comisiones']]}]
+  {g:'Cobros',items:[['#/cobros','Cuotas y seguimientos'],['#/facturacion','Facturación'],['#/comisiones','Comisiones']]}]
 function renderShell(){
   const nav=NAV.map(s=>`${s.g?`<div class="grp">${s.g}</div>`:''}${s.items.map(([h,l])=>`<a data-h="${h}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/></svg><span>${l}</span></a>`).join('')}`).join('')
   root.innerHTML=`<div id="app"><aside class="side"><div class="brand">${ROCKET}<div class="wm"><b>NAVE</b><span>Instituto · CRM</span></div></div>
@@ -163,7 +164,7 @@ function renderShell(){
   document.getElementById('so').onclick=()=>sb.auth.signOut();window.onhashchange=route}
 function setActive(){root.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('on',a.dataset.h===location.hash))}
 function route(){setActive();const h=location.hash
-  const map={'#/panel':renderPanel,'#/calendario':renderCalendario,'#/leads':renderLeads,'#/nuevo':()=>openLeadModal(),'#/importar':renderImport,'#/kpis':renderKpis,'#/triage':renderTriage,'#/reporte':renderReporte,'#/grilla':renderGrilla,'#/ventas':renderVentas,'#/senas':renderSenas,'#/comisiones':renderComisiones,'#/marketing':renderMarketing,'#/cobros':renderCobros}
+  const map={'#/panel':renderPanel,'#/calendario':renderCalendario,'#/leads':renderLeads,'#/nuevo':()=>openLeadModal(),'#/importar':renderImport,'#/kpis':renderKpis,'#/triage':renderTriage,'#/reporte':renderReporte,'#/grilla':renderGrilla,'#/ventas':renderVentas,'#/senas':renderSenas,'#/comisiones':renderComisiones,'#/facturacion':renderFacturacion,'#/marketing':renderMarketing,'#/cobros':renderCobros}
   ;(map[h]||renderPanel)()}
 function head(sub,title,actions=''){return `<div class="top"><div><div class="sub">${sub}</div><h1>${title}</h1></div><div class="grow"></div>${actions}</div>`}
 
@@ -343,6 +344,7 @@ async function saveReporte(){const g=id=>document.getElementById(id)
   const vf=readVentaForm('r_'),rate=await fxRate(vf.moneda)
   const rep={lead_id:leadId,closer_id:me.id,asistio:g('r_asis').value,resultado,fathom_link:g('r_fathom').value.trim(),programa:vf.programa,forma_cierre:vf.forma,moneda:vf.moneda,monto_facturado:vf.ticket,monto_upfront:vf.pago,cotizacion:rate,billetera:vf.billetera,situacion:g('r_sit').value.trim(),dolores:g('r_dol').value.trim(),razones_compra:g('r_raz').value.trim(),objecion_principal:g('r_o1').value.trim(),objecion_secundaria:g('r_o2').value.trim(),frases_clave:g('r_fr').value.trim(),motivo_no_cierre:g('r_mnc').value.trim(),proximo_seguimiento:g('r_ps').value||null,total_proyectado:Number(g('r_tp').value||0),proxima_accion:g('r_pa').value.trim(),feedback:g('r_fb').value.trim()}
   if(resultado==='Cerró'&&!vf.ticket){toast('Cerró: cargá el ticket de la venta');return}
+  if(resultado==='Cerró'&&vf.moneda!=='USD'&&!(vf.fx>0)){toast('Cargá la cotización de la venta (1 USD = ? '+vf.moneda+')');return}
   const{data:repRow,error}=await sb.from('reportes_llamada').insert(rep).select().single();if(error){toast('Error: '+error.message);return}
   if(leadId&&resultado==='Cerró'){
     try{await saveVenta({...vf,leadId,closerId:me.id,reporteId:repRow.id})}catch(e){toast('Reporte ok, error en venta: '+(e.message||e));return}
@@ -415,6 +417,7 @@ function ventaFormHTML(p){return `
   <div class="row3"><div class="field"><label>Forma de pago</label><select id="${p}forma">${FORMAS.map(f=>`<option>${f}</option>`).join('')}</select></div>
     <div class="field"><label>Moneda</label><select id="${p}mon">${MONEDAS.map(m=>`<option>${m}</option>`).join('')}</select></div>
     <div class="field"><label>Billetera / medio</label><input class="inp" id="${p}bill"/></div></div>
+  <div class="field" id="${p}fxWrap" style="display:none"><label id="${p}fxLbl">Cotización</label><input class="inp" id="${p}fx" type="number" placeholder="0"/><div class="sub2" style="margin-top:5px">Cuántos de esa moneda equivalen a 1 USD (ej: 1 USD = 1000 ARS → poné 1000). Convierte ticket, cash y comisión a USD.</div></div>
   <div class="row2"><div class="field"><label>Programa</label><input class="inp" id="${p}prog" placeholder="Programa vendido"/></div>
     <div class="field"><label>Setter (comisión)</label><select id="${p}setter"><option value="">— sin setter —</option>${state.setters.map(s=>`<option value="${s.id}">${esc(s.nombre)}</option>`).join('')}</select></div></div>
   <div class="row3"><div class="field"><label>Ticket (total)</label><input class="inp" id="${p}ticket" type="number" placeholder="0"/></div>
@@ -434,11 +437,16 @@ function wireVentaForm(p){const g=id=>document.getElementById(p+id)
       for(let i=1;i<=n;i++)rows+=`<div class="row2" data-cuota="${i}"><div class="field"><label>Cuota ${i+1} — monto</label><input class="inp cuotaMonto" type="number" value="${each?Number(each.toFixed(2)):''}"/></div><div class="field"><label>Vencimiento cuota ${i+1}</label><input class="inp cuotaVenc" type="date"/></div></div>`
       box.innerHTML=`<div class="sechead">Cuotas pendientes (a cobrar)</div>${rows}`
       box.querySelectorAll('.cuotaVenc').forEach((el,idx)=>{const d=new Date();d.setMonth(d.getMonth()+idx+1);el.value=d.toISOString().slice(0,10)})}}
-  g('ticket').oninput=build;g('pago').oninput=build;g('forma').onchange=build;build()}
+  g('ticket').oninput=build;g('pago').oninput=build;g('forma').onchange=build;build()
+  const monEl=g('mon'),fxWrap=g('fxWrap'),fxEl=g('fx'),fxLbl=g('fxLbl')
+  async function onMon(){const m=monEl.value
+    if(m==='USD'){if(fxWrap)fxWrap.style.display='none';if(fxEl)fxEl.value=''}
+    else if(fxWrap){fxWrap.style.display='';if(fxLbl)fxLbl.textContent='Cotización (1 USD = ? '+m+')';if(fxEl&&!fxEl.value){const r=await fxRate(m);if(r&&r!==1)fxEl.value=r}}}
+  if(monEl)monEl.onchange=onMon;onMon()}
 // Lee los valores del formulario de venta
 function readVentaForm(p){const g=id=>document.getElementById(p+id),cuotas=[]
   document.querySelectorAll('#'+p+'cuotasBox [data-cuota]').forEach(r=>{const monto=Number(r.querySelector('.cuotaMonto').value||0),venc=r.querySelector('.cuotaVenc').value||null;if(monto>0)cuotas.push({monto,vencimiento:venc})})
-  return{forma:g('forma').value,moneda:g('mon').value,billetera:g('bill').value.trim(),programa:g('prog').value.trim(),setter:g('setter').value||null,sena:(g('sena')&&g('sena').value)||null,ticket:Number(g('ticket').value||0),pago:Number(g('pago').value||0),cobrar:Number(g('cobrar').value||0),cuotas,file:(g('file').files&&g('file').files[0])||null}}
+  return{forma:g('forma').value,moneda:g('mon').value,fx:(g('fx')&&Number(g('fx').value))||0,billetera:g('bill').value.trim(),programa:g('prog').value.trim(),setter:g('setter').value||null,sena:(g('sena')&&g('sena').value)||null,ticket:Number(g('ticket').value||0),pago:Number(g('pago').value||0),cobrar:Number(g('cobrar').value||0),cuotas,file:(g('file').files&&g('file').files[0])||null}}
 // Sube el comprobante a Supabase Storage (bucket 'comprobantes') y devuelve la URL pública
 async function uploadComprobante(file){if(!file)return null
   const ext=(file.name.split('.').pop()||'bin').toLowerCase(),rnd=Math.random().toString(36).slice(2,8)
@@ -448,20 +456,39 @@ async function uploadComprobante(file){if(!file)return null
   return sb.storage.from('comprobantes').getPublicUrl(path).data.publicUrl}
 // Guarda la venta: sube comprobante, inserta venta, genera cuotas (pagada + pendientes) y cierra el lead
 const pctOf=(id,field)=>{const p=state.setters.find(x=>x.id===id);return p?Number(p[field]||0):0}
-async function saveVenta(v){const rate=await fxRate(v.moneda)
-  const comprobante_url=await uploadComprobante(v.file)
+async function saveVenta(v){const rate=v.moneda==='USD'?1:(Number(v.fx)>0?Number(v.fx):await fxRate(v.moneda))
+  let comprobante_url=v.currentComprobante||null
+  if(v.file)comprobante_url=await uploadComprobante(v.file)
   const origen=v.reporteId?'closing':'venta'
   const closerId=v.closerId||me.id,setterId=v.setterId||v.setter||null
   const com_setter_pct=setterId?pctOf(setterId,'com_setter_pct'):0,com_closer_pct=pctOf(closerId,'com_closer_pct')
   const venta={lanzamiento_id:state.lanz?state.lanz.id:null,lead_id:v.leadId||null,cliente:v.cliente||null,closer_id:closerId,setter_id:setterId,com_setter_pct,com_closer_pct,reporte_id:v.reporteId||null,programa:v.programa||null,moneda:v.moneda,cotizacion:rate,ticket:v.ticket,pagado:v.pago,a_cobrar:v.cobrar,forma_pago:v.forma,billetera:v.billetera||null,comprobante_url,origen}
-  const{data:vrow,error}=await sb.from('ventas').insert(venta).select().single();if(error)throw error
+  let ventaId=v.editId
+  if(v.editId){
+    const{data:oc}=await sb.from('cuotas').select('id').eq('venta_id',v.editId)
+    const{data:os}=await sb.from('senas').select('id').eq('venta_id',v.editId)
+    const oldIds=[...(oc||[]).map(c=>c.id),...(os||[]).map(s=>s.id)]
+    if(oldIds.length)await sb.from('comision_pagos').delete().in('origen_id',oldIds)
+    await sb.from('cuotas').delete().eq('venta_id',v.editId)
+    await sb.from('senas').update({estado:'registrada',venta_id:null}).eq('venta_id',v.editId)
+    const{error}=await sb.from('ventas').update(venta).eq('id',v.editId);if(error)throw error
+  }else{const{data:vrow,error}=await sb.from('ventas').insert(venta).select().single();if(error)throw error;ventaId=vrow.id}
   const cuotas=[]
-  if(v.pago>0)cuotas.push({venta_id:vrow.id,lead_id:v.leadId||null,programa:v.programa,moneda:v.moneda,monto:v.pago,monto_usd:v.pago/(rate||1),estado:'cobrado',origen,billetera:v.billetera,comprobante_url,cobrado_at:new Date().toISOString(),vencimiento:new Date().toISOString().slice(0,10)})
-  ;(v.cuotas||[]).forEach(c=>cuotas.push({venta_id:vrow.id,lead_id:v.leadId||null,programa:v.programa,moneda:v.moneda,monto:c.monto,monto_usd:c.monto/(rate||1),estado:'pendiente',origen,billetera:v.billetera,vencimiento:c.vencimiento}))
+  if(v.pago>0)cuotas.push({venta_id:ventaId,lead_id:v.leadId||null,programa:v.programa,moneda:v.moneda,monto:v.pago,monto_usd:v.pago/(rate||1),estado:'cobrado',origen,billetera:v.billetera,comprobante_url,cobrado_at:new Date().toISOString(),vencimiento:new Date().toISOString().slice(0,10)})
+  ;(v.cuotas||[]).forEach(c=>cuotas.push({venta_id:ventaId,lead_id:v.leadId||null,programa:v.programa,moneda:v.moneda,monto:c.monto,monto_usd:c.monto/(rate||1),estado:'pendiente',origen,billetera:v.billetera,vencimiento:c.vencimiento}))
   if(cuotas.length){const{error:ce}=await sb.from('cuotas').insert(cuotas);if(ce)throw ce}
-  if(v.sena)await sb.from('senas').update({venta_id:vrow.id,estado:'aplicada'}).eq('id',v.sena)
+  if(v.sena)await sb.from('senas').update({venta_id:ventaId,estado:'aplicada'}).eq('id',v.sena)
   if(v.leadId)await sb.from('leads').update({estado:'Cerrado'}).eq('id',v.leadId)
-  return vrow}
+  return{id:ventaId}}
+async function deleteVenta(id){
+  const{data:oc}=await sb.from('cuotas').select('id').eq('venta_id',id)
+  const{data:os}=await sb.from('senas').select('id').eq('venta_id',id)
+  const oldIds=[...(oc||[]).map(c=>c.id),...(os||[]).map(s=>s.id)]
+  if(oldIds.length)await sb.from('comision_pagos').delete().in('origen_id',oldIds)
+  await sb.from('cuotas').delete().eq('venta_id',id)
+  await sb.from('senas').update({estado:'registrada',venta_id:null}).eq('venta_id',id)
+  const{error}=await sb.from('ventas').delete().eq('id',id);if(error)throw error}
+async function deleteSena(id){const{error}=await sb.from('senas').delete().eq('id',id);if(error)throw error}
 async function renderVentas(){view().innerHTML=head('VENTAS · '+esc((state.lanz&&state.lanz.nombre)||'LANZAMIENTO'),'Ventas','<button class="btn primary" id="v_new">+ Cargar venta</button>')
   +`<div class="funnel" id="vk"></div>
     <div class="tablewrap"><table><thead><tr><th>Cliente</th><th>Fecha</th><th>Programa</th><th>Forma</th><th>Ticket</th><th>Pagó</th><th>A cobrar</th><th>Comprobante</th></tr></thead><tbody id="vrows"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table></div>`
@@ -472,26 +499,48 @@ async function renderVentas(){view().innerHTML=head('VENTAS · '+esc((state.lanz
   const sumUsd=k=>(data||[]).reduce((a,x)=>a+Number(x[k]||0)/(Number(x.cotizacion)||1),0)
   const cells=[['Ventas',(data||[]).length],['Ticket total',money(sumUsd('ticket'))],['Cobrado',money(sumUsd('pagado'))],['A cobrar',money(sumUsd('a_cobrar'))]]
   document.getElementById('vk').innerHTML=cells.map(([l,n])=>`<div class="fcell"><div class="n" style="font-size:24px">${typeof n==='number'?num(n):n}</div><div class="l">${l}</div></div>`).join('')
-  document.getElementById('vrows').innerHTML=(data&&data.length)?data.map(v=>`<tr><td class="nm">${esc(v.leads?v.leads.nombre:(v.cliente||'—'))}</td><td class="sub2">${fmtDate(v.fecha)}</td><td>${esc(v.programa||'—')}</td><td>${esc(v.forma_pago||'—')}</td><td class="nm">${money((v.ticket||0)/(v.cotizacion||1))}</td><td>${money((v.pagado||0)/(v.cotizacion||1))}</td><td>${money((v.a_cobrar||0)/(v.cotizacion||1))}</td><td>${v.comprobante_url?`<a href="${esc(v.comprobante_url)}" target="_blank" rel="noopener">ver</a>`:'<span class="sub2">—</span>'}</td></tr>`).join(''):`<tr><td colspan="8" class="empty">Sin ventas cargadas todavía.</td></tr>`}
-async function openVentaModal(){
+  document.getElementById('vrows').innerHTML=(data&&data.length)?data.map(v=>`<tr class="clk" data-id="${v.id}"><td class="nm">${esc(v.leads?v.leads.nombre:(v.cliente||'—'))}</td><td class="sub2">${fmtDate(v.fecha)}</td><td>${esc(v.programa||'—')}</td><td>${esc(v.forma_pago||'—')}</td><td class="nm">${money((v.ticket||0)/(v.cotizacion||1))}</td><td>${money((v.pagado||0)/(v.cotizacion||1))}</td><td>${money((v.a_cobrar||0)/(v.cotizacion||1))}</td><td>${v.comprobante_url?`<a href="${esc(v.comprobante_url)}" target="_blank" rel="noopener">ver</a>`:'<span class="sub2">—</span>'}</td></tr>`).join(''):`<tr><td colspan="8" class="empty">Sin ventas cargadas todavía.</td></tr>`
+  document.querySelectorAll('#vrows tr[data-id]').forEach(tr=>tr.onclick=e=>{if(e.target.tagName==='A')return;openVentaModal(data.find(x=>x.id===tr.dataset.id))})}
+async function openVentaModal(venta){const isEdit=!!venta
   const{data:leads}=await sb.from('leads').select('id,nombre,asesor_id').in('estado',['Agendó','Asistió','Confirmó clase','Cerrado']).order('updated_at',{ascending:false}).limit(300)
   const ov=document.createElement('div');ov.className='overlay'
-  ov.innerHTML=`<div class="modal"><h2>Cargar venta</h2>
+  ov.innerHTML=`<div class="modal"><h2>${isEdit?'Editar venta':'Cargar venta'}</h2>
+    ${isEdit?'<p class="cdesc" style="color:var(--warn)">Editar regenera las cuotas de esta venta. Si ya habías marcado cuotas cobradas o comisiones pagadas, se reinician.</p>':''}
     <div class="row2"><div class="field"><label>Lead (agenda)</label><select id="v_lead"><option value="">— manual / nuevo —</option>${(leads||[]).map(l=>`<option value="${l.id}">${esc(l.nombre)}</option>`).join('')}</select></div><div class="field"><label>Nombre (si es manual)</label><input class="inp" id="v_cliente" placeholder="Nombre del cliente"/></div></div>
     ${ventaFormHTML('v_')}
-    <div class="actions"><div class="grow"></div><button class="btn ghost" id="v_cancel">Cancelar</button><button class="btn primary" id="v_save">Guardar venta</button></div></div>`
+    ${isEdit&&venta.comprobante_url?`<div class="sub2" style="margin:-6px 0 12px">Comprobante actual: <a href="${esc(venta.comprobante_url)}" target="_blank" rel="noopener">ver</a> — subí uno nuevo arriba solo si querés reemplazarlo.</div>`:''}
+    <div class="actions">${isEdit?'<button class="btn danger" id="v_del">Eliminar venta</button>':''}<div class="grow"></div><button class="btn ghost" id="v_cancel">Cancelar</button><button class="btn primary" id="v_save">${isEdit?'Guardar cambios':'Guardar venta'}</button></div></div>`
   document.body.appendChild(ov);ov.onclick=e=>{if(e.target===ov)ov.remove()}
   ov.querySelector('#v_cancel').onclick=()=>ov.remove();wireVentaForm('v_')
   let vSenas=[]
-  const vLead=ov.querySelector('#v_lead');vLead.onchange=()=>{const l=(leads||[]).find(x=>x.id===vLead.value),ss=ov.querySelector('#v_setter');if(ss)ss.value=(l&&l.asesor_id)||'';const sm=vSenas.find(s=>s.lead_id===vLead.value),sn=ov.querySelector('#v_sena');if(sn)sn.value=sm?sm.id:''}
+  const gid=id=>document.getElementById('v_'+id)
+  const vLead=ov.querySelector('#v_lead');vLead.onchange=()=>{const l=(leads||[]).find(x=>x.id===vLead.value),ss=gid('setter');if(ss)ss.value=(l&&l.asesor_id)||'';const sm=vSenas.find(s=>s.lead_id===vLead.value),sn=gid('sena');if(sn&&!isEdit)sn.value=sm?sm.id:''}
   vSenas=await loadSenaOptions('v_')
+  if(isEdit){
+    vLead.value=venta.lead_id||'';gid('cliente').value=venta.cliente||''
+    gid('forma').value=venta.forma_pago||'Un pago'
+    gid('mon').value=venta.moneda||'USD'
+    if(venta.moneda&&venta.moneda!=='USD'){gid('fxWrap').style.display='';gid('fxLbl').textContent='Cotización (1 USD = ? '+venta.moneda+')';gid('fx').value=venta.cotizacion||''}
+    gid('bill').value=venta.billetera||'';gid('prog').value=venta.programa||''
+    if(venta.setter_id)gid('setter').value=venta.setter_id
+    gid('ticket').value=venta.ticket!=null?venta.ticket:'';gid('pago').value=venta.pagado!=null?venta.pagado:''
+    gid('forma').dispatchEvent(new Event('change'))
+    const{data:pc}=await sb.from('cuotas').select('monto,vencimiento').eq('venta_id',venta.id).eq('estado','pendiente').order('vencimiento')
+    const rows=ov.querySelectorAll('#v_cuotasBox [data-cuota]')
+    ;(pc||[]).forEach((c,i)=>{const r=rows[i];if(r){r.querySelector('.cuotaMonto').value=c.monto;if(c.vencimiento)r.querySelector('.cuotaVenc').value=c.vencimiento}})
+    const{data:sn}=await sb.from('senas').select('id,monto,moneda').eq('venta_id',venta.id).limit(1)
+    if(sn&&sn[0]){const sel=gid('sena'),o=document.createElement('option');o.value=sn[0].id;o.textContent='(seña aplicada · '+esc(sn[0].moneda)+' '+num(sn[0].monto)+')';o.selected=true;sel.appendChild(o)}
+    gid('ticket').dispatchEvent(new Event('input'))
+    ov.querySelector('#v_del').onclick=async()=>{if(confirm('¿Eliminar esta venta? Se borran sus cuotas y comisiones, y se libera la seña si tenía.')){try{await deleteVenta(venta.id);toast('Venta eliminada ✓');ov.remove();renderVentas()}catch(e){toast('Error: '+(e.message||e))}}}
+  }
   ov.querySelector('#v_save').onclick=async()=>{const btn=ov.querySelector('#v_save'),f=readVentaForm('v_')
-    const leadId=document.getElementById('v_lead').value||null,cliente=document.getElementById('v_cliente').value.trim()
+    const leadId=gid('lead').value||null,cliente=gid('cliente').value.trim()
     if(!f.ticket){toast('Poné el ticket (total)');return}
+    if(f.moneda!=='USD'&&!(f.fx>0)){toast('Cargá la cotización (1 USD = ? '+f.moneda+')');return}
     if(!leadId&&!cliente){toast('Elegí un lead o poné un nombre');return}
     btn.textContent='Guardando…'
-    try{await saveVenta({...f,leadId,cliente,closerId:me.id});toast('Venta cargada ✓');ov.remove();renderVentas()}
-    catch(e){toast('Error: '+(e.message||e));btn.textContent='Guardar venta'}}}
+    try{await saveVenta({...f,leadId,cliente,closerId:isEdit?(venta.closer_id||me.id):me.id,editId:isEdit?venta.id:null,currentComprobante:isEdit?venta.comprobante_url:null});toast(isEdit?'Cambios guardados ✓':'Venta cargada ✓');ov.remove();renderVentas()}
+    catch(e){toast('Error: '+(e.message||e));btn.textContent=isEdit?'Guardar cambios':'Guardar venta'}}}
 
 /* ================= SEÑAS ================= */
 // Llena el <select> de seña a aplicar (solo señas en estado 'registrada'). Devuelve la lista para autoseleccionar por lead.
@@ -509,27 +558,77 @@ async function renderSenas(){view().innerHTML=head('SEÑAS · '+esc((state.lanz&
   const sumUsd=arr=>arr.reduce((a,x)=>a+Number(x.monto_usd||0),0),reg=(data||[]).filter(s=>s.estado==='registrada'),apl=(data||[]).filter(s=>s.estado==='aplicada')
   document.getElementById('sk').innerHTML=[['Señas en espera',money(sumUsd(reg))],['Señas aplicadas',money(sumUsd(apl))],['Total señas',money(sumUsd(data||[]))]].map(([l,n])=>`<div class="fcell"><div class="n" style="font-size:24px">${n}</div><div class="l">${l}</div></div>`).join('')
   const chip=e=>e==='registrada'?'<span class="chip pendiente">en espera</span>':e==='aplicada'?'<span class="chip cobrado">aplicada</span>':'<span class="chip vencido">anulada</span>'
-  document.getElementById('srows').innerHTML=(data&&data.length)?data.map(s=>`<tr><td class="nm">${esc(s.leads?s.leads.nombre:(s.cliente||'—'))}</td><td class="sub2">${fmtDate(s.fecha)}</td><td class="nm">${money(s.monto_usd)}</td><td>${chip(s.estado)}</td><td class="sub2">${s.venta_id?'sí':'—'}</td><td>${s.comprobante_url?`<a href="${esc(s.comprobante_url)}" target="_blank" rel="noopener">ver</a>`:'<span class="sub2">—</span>'}</td></tr>`).join(''):`<tr><td colspan="6" class="empty">Sin señas registradas.</td></tr>`}
-async function openSenaModal(){
+  document.getElementById('srows').innerHTML=(data&&data.length)?data.map(s=>`<tr class="clk" data-id="${s.id}"><td class="nm">${esc(s.leads?s.leads.nombre:(s.cliente||'—'))}</td><td class="sub2">${fmtDate(s.fecha)}</td><td class="nm">${money(s.monto_usd)}</td><td>${chip(s.estado)}</td><td class="sub2">${s.venta_id?'sí':'—'}</td><td>${s.comprobante_url?`<a href="${esc(s.comprobante_url)}" target="_blank" rel="noopener">ver</a>`:'<span class="sub2">—</span>'}</td></tr>`).join(''):`<tr><td colspan="6" class="empty">Sin señas registradas.</td></tr>`
+  document.querySelectorAll('#srows tr[data-id]').forEach(tr=>tr.onclick=e=>{if(e.target.tagName==='A')return;const s=data.find(x=>x.id===tr.dataset.id);if(s.estado==='aplicada'){toast('Seña aplicada: editala o quitala desde la venta');return}openSenaModal(s)})}
+async function openSenaModal(sena){const isEdit=!!sena
   const{data:leads}=await sb.from('leads').select('id,nombre').in('estado',['Agendó','Asistió','Confirmó clase','Cerrado']).order('updated_at',{ascending:false}).limit(300)
   const ov=document.createElement('div');ov.className='overlay'
-  ov.innerHTML=`<div class="modal"><h2>Registrar seña</h2>
+  ov.innerHTML=`<div class="modal"><h2>${isEdit?'Editar seña':'Registrar seña'}</h2>
     <div class="row2"><div class="field"><label>Lead</label><select id="s_lead"><option value="">— manual / nuevo —</option>${(leads||[]).map(l=>`<option value="${l.id}">${esc(l.nombre)}</option>`).join('')}</select></div><div class="field"><label>Nombre (si es manual)</label><input class="inp" id="s_cliente"/></div></div>
     <div class="row3"><div class="field"><label>Moneda</label><select id="s_mon">${MONEDAS.map(m=>`<option>${m}</option>`).join('')}</select></div><div class="field"><label>Monto</label><input class="inp" id="s_monto" type="number" placeholder="0"/></div><div class="field"><label>Billetera</label><input class="inp" id="s_bill"/></div></div>
-    <div class="field"><label>Comprobante</label><input class="inp" id="s_file" type="file" accept="image/*,application/pdf" style="padding:10px"/></div>
-    <div class="actions"><div class="grow"></div><button class="btn ghost" id="s_cancel">Cancelar</button><button class="btn primary" id="s_save">Guardar seña</button></div></div>`
+    <div class="field" id="s_fxWrap" style="display:none"><label id="s_fxLbl">Cotización</label><input class="inp" id="s_fx" type="number" placeholder="0"/><div class="sub2" style="margin-top:5px">Cuántos de esa moneda equivalen a 1 USD.</div></div>
+    <div class="field"><label>Comprobante</label><input class="inp" id="s_file" type="file" accept="image/*,application/pdf" style="padding:10px"/>${isEdit&&sena.comprobante_url?`<div class="sub2" style="margin-top:5px">Actual: <a href="${esc(sena.comprobante_url)}" target="_blank" rel="noopener">ver</a> — subí uno nuevo solo para reemplazar.</div>`:''}</div>
+    <div class="actions">${isEdit?'<button class="btn danger" id="s_del">Eliminar</button>':''}<div class="grow"></div><button class="btn ghost" id="s_cancel">Cancelar</button><button class="btn primary" id="s_save">${isEdit?'Guardar cambios':'Guardar seña'}</button></div></div>`
   document.body.appendChild(ov);ov.onclick=e=>{if(e.target===ov)ov.remove()};ov.querySelector('#s_cancel').onclick=()=>ov.remove()
+  const smon=document.getElementById('s_mon'),sOnMon=async()=>{const m=smon.value,w=document.getElementById('s_fxWrap'),f=document.getElementById('s_fx'),lb=document.getElementById('s_fxLbl')
+    if(m==='USD'){w.style.display='none';f.value=''}else{w.style.display='';lb.textContent='Cotización (1 USD = ? '+m+')';if(!f.value){const r=await fxRate(m);if(r&&r!==1)f.value=r}}}
+  smon.onchange=sOnMon
+  if(isEdit){const g=id=>document.getElementById(id)
+    g('s_lead').value=sena.lead_id||'';g('s_cliente').value=sena.cliente||'';g('s_mon').value=sena.moneda||'USD';g('s_monto').value=sena.monto!=null?sena.monto:'';g('s_bill').value=sena.billetera||''
+    if(sena.moneda&&sena.moneda!=='USD'){g('s_fxWrap').style.display='';g('s_fxLbl').textContent='Cotización (1 USD = ? '+sena.moneda+')';g('s_fx').value=sena.cotizacion||''}
+    g('s_del').onclick=async()=>{if(confirm('¿Eliminar esta seña?')){try{await deleteSena(sena.id);toast('Seña eliminada ✓');ov.remove();renderSenas()}catch(e){toast('Error: '+(e.message||e))}}}
+  }else sOnMon()
   ov.querySelector('#s_save').onclick=async()=>{const btn=ov.querySelector('#s_save'),g=id=>document.getElementById(id)
-    const leadId=g('s_lead').value||null,cliente=g('s_cliente').value.trim(),mon=g('s_mon').value,monto=Number(g('s_monto').value||0)
-    if(!monto){toast('Poné el monto de la seña');return};if(!leadId&&!cliente){toast('Elegí un lead o poné un nombre');return}
+    const leadId=g('s_lead').value||null,cliente=g('s_cliente').value.trim(),mon=g('s_mon').value,monto=Number(g('s_monto').value||0),fx=Number(g('s_fx').value||0)
+    if(!monto){toast('Poné el monto de la seña');return};if(mon!=='USD'&&!(fx>0)){toast('Cargá la cotización (1 USD = ? '+mon+')');return};if(!leadId&&!cliente){toast('Elegí un lead o poné un nombre');return}
     btn.textContent='Guardando…'
-    try{const rate=await fxRate(mon),comprobante_url=await uploadComprobante((g('s_file').files&&g('s_file').files[0])||null)
-      const{error}=await sb.from('senas').insert({lanzamiento_id:state.lanz?state.lanz.id:null,lead_id:leadId,cliente:cliente||null,closer_id:me.id,moneda:mon,cotizacion:rate,monto,monto_usd:monto/(rate||1),billetera:g('s_bill').value.trim(),comprobante_url,estado:'registrada'})
-      if(error)throw error;toast('Seña registrada ✓');ov.remove();renderSenas()}
-    catch(e){toast('Error: '+(e.message||e));btn.textContent='Guardar seña'}}}
+    try{const rate=mon==='USD'?1:(fx>0?fx:await fxRate(mon))
+      let comprobante_url=isEdit?sena.comprobante_url||null:null;const nf=(g('s_file').files&&g('s_file').files[0])||null;if(nf)comprobante_url=await uploadComprobante(nf)
+      const row={lanzamiento_id:state.lanz?state.lanz.id:null,lead_id:leadId,cliente:cliente||null,moneda:mon,cotizacion:rate,monto,monto_usd:monto/(rate||1),billetera:g('s_bill').value.trim(),comprobante_url}
+      const{error}=isEdit?await sb.from('senas').update(row).eq('id',sena.id):await sb.from('senas').insert({...row,closer_id:me.id,estado:'registrada'})
+      if(error)throw error;toast(isEdit?'Seña actualizada ✓':'Seña registrada ✓');ov.remove();renderSenas()}
+    catch(e){toast('Error: '+(e.message||e));btn.textContent=isEdit?'Guardar cambios':'Guardar seña'}}}
+
+/* ================= FACTURACIÓN ================= */
+async function renderFacturacion(){
+  const{data:lanzs}=await sb.from('lanzamientos').select('id,numero,nombre').order('numero',{ascending:true,nullsFirst:false})
+  if(facLanzFilter===null)facLanzFilter=(state.lanz&&state.lanz.id)||'all'
+  const opts=`<option value="all">Todos los lanzamientos</option>`+(lanzs||[]).map(l=>`<option value="${l.id}" ${facLanzFilter===l.id?'selected':''}>${lanzLabel(l)}</option>`).join('')
+  view().innerHTML=head('FACTURACIÓN','Facturación y cash collected',`<select class="pill" id="fc_lanz">${opts}</select>`)+`<div class="funnel" id="fk"></div><div id="facBody"><div class="empty" style="padding:24px">Cargando…</div></div>`
+  document.getElementById('fc_lanz').onchange=e=>{facLanzFilter=e.target.value;renderFacturacion()}
+  let vq=sb.from('ventas').select('id,moneda,ticket,cotizacion');if(facLanzFilter!=='all')vq=vq.eq('lanzamiento_id',facLanzFilter)
+  const{data:ventas,error}=await vq
+  if(error){document.getElementById('facBody').innerHTML=`<div class="empty" style="padding:24px">Error: ${esc(error.message)}</div>`;return}
+  let cq=sb.from('cuotas').select('monto,monto_usd,estado,moneda,venta_id,ventas!inner(lanzamiento_id)');if(facLanzFilter!=='all')cq=cq.eq('ventas.lanzamiento_id',facLanzFilter)
+  const{data:cuotas}=await cq
+  let sq=sb.from('senas').select('monto,monto_usd,moneda,venta_id,ventas!inner(lanzamiento_id)').eq('estado','aplicada');if(facLanzFilter!=='all')sq=sq.eq('ventas.lanzamiento_id',facLanzFilter)
+  const{data:senas}=await sq
+  // acumular por moneda
+  const M={} // moneda -> {fact,factUsd,cash,cashUsd,pend,pendUsd}
+  const slot=m=>M[m]=M[m]||{fact:0,factUsd:0,cash:0,cashUsd:0,pend:0,pendUsd:0}
+  ;(ventas||[]).forEach(v=>{const m=v.moneda||'USD',a=slot(m);a.fact+=Number(v.ticket||0);a.factUsd+=Number(v.ticket||0)/(Number(v.cotizacion)||1)})
+  const ventasConCobro=new Set()
+  ;(cuotas||[]).forEach(c=>{const m=c.moneda||'USD',a=slot(m)
+    if(c.estado==='cobrado'){if(c.venta_id)ventasConCobro.add(c.venta_id);a.cash+=Number(c.monto||0);a.cashUsd+=Number(c.monto_usd||0)}
+    else{a.pend+=Number(c.monto||0);a.pendUsd+=Number(c.monto_usd||0)}})
+  ;(senas||[]).forEach(s=>{if(!s.venta_id||!ventasConCobro.has(s.venta_id))return;const m=s.moneda||'USD',a=slot(m);a.cash+=Number(s.monto||0);a.cashUsd+=Number(s.monto_usd||0)})
+  // totales unificados USD
+  const T=Object.values(M).reduce((t,a)=>({factUsd:t.factUsd+a.factUsd,cashUsd:t.cashUsd+a.cashUsd,pendUsd:t.pendUsd+a.pendUsd}),{factUsd:0,cashUsd:0,pendUsd:0})
+  document.getElementById('fk').innerHTML=[['Facturación (USD)',money(T.factUsd)],['Cash collected (USD)',money(T.cashUsd)],['Por cobrar (USD)',money(T.pendUsd)]].map(([l,n])=>`<div class="fcell"><div class="n" style="font-size:24px">${n}</div><div class="l">${l}</div></div>`).join('')
+  const rowsCur=(mon,a)=>`<div class="card" style="margin:0 30px 16px"><h3>Ventas en ${mon}</h3>
+    <div class="listrow"><span style="flex:1" class="sub2">Facturación (ticket total)</span><span class="nm">${fmtCur(a.fact,mon)}</span></div>
+    <div class="listrow"><span style="flex:1" class="sub2">Cash collected</span><span class="nm">${fmtCur(a.cash,mon)}</span></div>
+    <div class="listrow"><span style="flex:1" class="sub2">Por cobrar</span><span class="nm">${fmtCur(a.pend,mon)}</span></div></div>`
+  const orden=['ARS','USD','EUR'].filter(m=>M[m]).concat(Object.keys(M).filter(m=>!['ARS','USD','EUR'].includes(m)))
+  const cards=orden.length?orden.map(m=>rowsCur(m,M[m])).join(''):`<div class="empty" style="padding:24px">Sin ventas cargadas todavía.</div>`
+  const total=`<div class="card" style="margin:0 30px 24px;border-color:var(--accent-dim)"><h3>Total unificado (USD)</h3><p class="cdesc">Las ventas en otras monedas se convierten a USD con la cotización de cada venta.</p>
+    <div class="listrow"><span style="flex:1" class="sub2">Facturación</span><span class="nm">${money(T.factUsd)}</span></div>
+    <div class="listrow"><span style="flex:1" class="sub2">Cash collected</span><span class="nm">${money(T.cashUsd)}</span></div>
+    <div class="listrow"><span style="flex:1" class="sub2">Por cobrar</span><span class="nm">${money(T.pendUsd)}</span></div></div>`
+  document.getElementById('facBody').innerHTML=cards+total}
 
 /* ================= COMISIONES ================= */
-let comLanzFilter=null,COM_LINES=[],COM_PAID=new Set()
+let comLanzFilter=null,COM_LINES=[],COM_PAID=new Set(),facLanzFilter=null
 const lanzLabel=l=>(l.numero!=null?('N° '+l.numero+' · '):'')+esc(l.nombre||'Lanzamiento')
 async function renderComisiones(){
   const{data:lanzs}=await sb.from('lanzamientos').select('id,numero,nombre').order('numero',{ascending:true,nullsFirst:false})
@@ -562,8 +661,8 @@ async function renderComisiones(){
   const paid=new Set((pagos||[]).map(p=>p.origen_tipo+':'+p.origen_id+':'+p.rol))
   const lines=[],ventasConCobro=new Set()
   const push=(tipo,id,base,v)=>{const label=(v.leads&&v.leads.nombre)||v.cliente||'—'
-    if(v.setter_id)lines.push({tipo,id,rol:'setter',personaId:v.setter_id,base,pct:Number(v.com_setter_pct||0),monto:base*Number(v.com_setter_pct||0)/100,label,lanzId:v.lanzamiento_id})
-    if(v.closer_id)lines.push({tipo,id,rol:'closer',personaId:v.closer_id,base,pct:Number(v.com_closer_pct||0),monto:base*Number(v.com_closer_pct||0)/100,label,lanzId:v.lanzamiento_id})}
+    if(v.setter_id)lines.push({tipo,id,ventaId:v.id,rol:'setter',personaId:v.setter_id,base,pct:Number(v.com_setter_pct||0),monto:base*Number(v.com_setter_pct||0)/100,label,lanzId:v.lanzamiento_id})
+    if(v.closer_id)lines.push({tipo,id,ventaId:v.id,rol:'closer',personaId:v.closer_id,base,pct:Number(v.com_closer_pct||0),monto:base*Number(v.com_closer_pct||0)/100,label,lanzId:v.lanzamiento_id})}
   ;(cuotas||[]).forEach(c=>{const v=vmap[c.venta_id];if(!v)return;ventasConCobro.add(c.venta_id);push('cuota',c.id,Number(c.monto_usd||0),v)})
   ;(senas||[]).forEach(s=>{const v=vmap[s.venta_id];if(!v||!ventasConCobro.has(s.venta_id))return;push('sena',s.id,Number(s.monto_usd||0),v)})
   COM_LINES=lines;COM_PAID=paid
@@ -573,7 +672,7 @@ async function renderComisiones(){
   const ts=tot(setAgg),tc=tot(cloAgg),dev=ts.dev+tc.dev,pag=ts.pag+tc.pag
   document.getElementById('ck').innerHTML=[['Ganado',money(dev)],['Pagado',money(pag)],['Pendiente',money(dev-pag)]].map(([l,n])=>`<div class="fcell"><div class="n" style="font-size:24px">${n}</div><div class="l">${l}</div></div>`).join('')
   const tbl=(o,rol)=>{const list=Object.keys(o).map(id=>{const p=state.setters.find(x=>x.id===id);return{id,nombre:(p&&p.nombre)||'—',dev:o[id].dev,pag:o[id].pag,pend:o[id].dev-o[id].pag}}).sort((a,b)=>b.pend-a.pend)
-    return list.length?`<div class="tablewrap" style="margin:0"><table><thead><tr><th>Persona</th><th>Ganado</th><th>Pagado</th><th>Pend.</th><th></th></tr></thead><tbody>${list.map(r=>`<tr><td class="nm">${esc(r.nombre)}</td><td>${money(r.dev)}</td><td>${money(r.pag)}</td><td class="nm" style="color:${r.pend>0.001?'var(--warn)':'var(--good)'}">${money(r.pend)}</td><td><button class="pg" data-det="${rol}|${r.id}">detalle</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty" style="padding:24px">Sin comisiones en este lanzamiento.</div>`}
+    return list.length?`<div class="tablewrap" style="margin:0"><table><thead><tr><th>Persona</th><th>Ganado</th><th>Pagado</th><th>Pend.</th><th></th></tr></thead><tbody>${list.map(r=>`<tr><td><span class="nm" data-det="${rol}|${r.id}" style="cursor:pointer;border-bottom:1px dotted var(--faint)">${esc(r.nombre)}</span></td><td>${money(r.dev)}</td><td>${money(r.pag)}</td><td class="nm" style="color:${r.pend>0.001?'var(--warn)':'var(--good)'}">${money(r.pend)}</td><td><button class="pg" data-det="${rol}|${r.id}">ver ventas</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty" style="padding:24px">Sin comisiones en este lanzamiento.</div>`}
   document.getElementById('setTbl').innerHTML=tbl(setAgg,'setter')
   document.getElementById('cloTbl').innerHTML=tbl(cloAgg,'closer')
   document.querySelectorAll('[data-det]').forEach(b=>b.onclick=()=>{const parts=b.dataset.det.split('|');openComDetalle(parts[0],parts[1])})}
@@ -582,19 +681,27 @@ function openComDetalle(rol,personaId){
   const mine=COM_LINES.filter(l=>l.rol===rol&&l.personaId===personaId)
   const ov=document.createElement('div');ov.className='overlay';let changed=false
   const keyOf=l=>l.tipo+':'+l.id+':'+l.rol
-  const body=()=>mine.map((l,i)=>{const pagado=COM_PAID.has(keyOf(l))
-    return `<tr><td class="nm">${esc(l.label)}</td><td class="sub2">${l.tipo==='sena'?'seña':'cuota'}</td><td>${money(l.base)}</td><td class="sub2">${l.pct}%</td><td class="nm">${money(l.monto)}</td><td>${pagado?'<span class="chip cobrado">pagada</span>':'<span class="chip pendiente">pendiente</span>'}</td>${isMgr()?`<td><button class="pg" data-tog="${i}">${pagado?'desmarcar':'marcar pagada'}</button></td>`:''}</tr>`}).join('')
+  const groups=()=>{const g={},ord=[];mine.forEach((l,i)=>{const k=String(l.ventaId);if(!g[k]){g[k]={label:l.label,items:[]};ord.push(k)}g[k].items.push({l,i})});return{g,ord}}
+  const body=()=>{const{g,ord}=groups();if(!ord.length)return ''
+    return ord.map(k=>{const grp=g[k],sub=grp.items.reduce((a,x)=>a+x.l.monto,0),pag=grp.items.reduce((a,x)=>a+(COM_PAID.has(keyOf(x.l))?x.l.monto:0),0)
+      const est=pag>=sub-0.001?'<span class="chip cobrado">pagada</span>':pag>0?'<span class="chip potencial">parcial</span>':'<span class="chip pendiente">pendiente</span>'
+      const head=`<tr><td class="nm">${esc(grp.label)}</td><td></td><td></td><td class="nm">${money(sub)}</td><td>${est}</td>${isMgr()?`<td><button class="pg" data-togv="${k}">${pag>=sub-0.001?'desmarcar':'pagar venta'}</button></td>`:''}</tr>`
+      const rows=grp.items.map(({l,i})=>{const pd=COM_PAID.has(keyOf(l))
+        return `<tr><td class="sub2" style="padding-left:22px">↳ ${l.tipo==='sena'?'seña':'cuota'}</td><td class="sub2">${money(l.base)}</td><td class="sub2">${l.pct}%</td><td>${money(l.monto)}</td><td>${pd?'<span class="chip cobrado">pagada</span>':'<span class="chip pendiente">pend.</span>'}</td>${isMgr()?`<td><button class="pg" data-tog="${i}">${pd?'quitar':'pagar'}</button></td>`:''}</tr>`}).join('')
+      return head+rows}).join('')}
   const totals=()=>{const dev=mine.reduce((a,l)=>a+l.monto,0),pag=mine.reduce((a,l)=>a+(COM_PAID.has(keyOf(l))?l.monto:0),0);return{dev,pag}}
-  const draw=()=>{const t=totals();ov.querySelector('#cd_sum').textContent=`Ganado ${money(t.dev)} · Pagado ${money(t.pag)} · Pendiente ${money(t.dev-t.pag)}`;ov.querySelector('#cd_body').innerHTML=body()||`<tr><td colspan="7" class="empty">Sin líneas.</td></tr>`;wire()}
+  const draw=()=>{const t=totals();ov.querySelector('#cd_sum').textContent=`Comisión total ${money(t.dev)} · Pagado ${money(t.pag)} · Pendiente ${money(t.dev-t.pag)}`;ov.querySelector('#cd_body').innerHTML=body()||`<tr><td colspan="6" class="empty">Sin ventas con comisión todavía.</td></tr>`;wire()}
   const setPaid=async(l,val)=>{const m={origen_tipo:l.tipo,origen_id:l.id,rol:l.rol}
     if(val){const{error}=await sb.from('comision_pagos').upsert({...m,persona_id:l.personaId,lanzamiento_id:l.lanzId||null,monto_usd:l.monto,pagado_by:me.id,pagado_at:new Date().toISOString()},{onConflict:'origen_tipo,origen_id,rol'});if(error){toast('Error: '+error.message);return}COM_PAID.add(keyOf(l))}
     else{const{error}=await sb.from('comision_pagos').delete().match(m);if(error){toast('Error: '+error.message);return}COM_PAID.delete(keyOf(l))}
     changed=true}
-  function wire(){ov.querySelectorAll('[data-tog]').forEach(b=>b.onclick=async()=>{const l=mine[Number(b.dataset.tog)];await setPaid(l,!COM_PAID.has(keyOf(l)));draw()})}
-  ov.innerHTML=`<div class="modal" style="max-width:700px"><h2>${esc(nombre)} · comisión ${rol}</h2>
+  function wire(){
+    ov.querySelectorAll('[data-tog]').forEach(b=>b.onclick=async()=>{const l=mine[Number(b.dataset.tog)];await setPaid(l,!COM_PAID.has(keyOf(l)));draw()})
+    ov.querySelectorAll('[data-togv]').forEach(b=>b.onclick=async()=>{const grp=mine.filter(l=>String(l.ventaId)===b.dataset.togv),allPaid=grp.every(l=>COM_PAID.has(keyOf(l)));for(const l of grp)await setPaid(l,!allPaid);draw()})}
+  ov.innerHTML=`<div class="modal" style="max-width:720px"><h2>${esc(nombre)} · comisión ${rol}</h2>
     <p class="cdesc" id="cd_sum"></p>
-    ${isMgr()?'<div class="actions" style="margin:0 0 12px"><button class="btn ghost" id="cd_all">Marcar todas pagadas</button></div>':''}
-    <div class="tablewrap" style="margin:0"><table><thead><tr><th>Origen</th><th>Tipo</th><th>Base</th><th>%</th><th>Comisión</th><th>Estado</th>${isMgr()?'<th></th>':''}</tr></thead><tbody id="cd_body"></tbody></table></div>
+    ${isMgr()?'<div class="actions" style="margin:0 0 12px"><button class="btn ghost" id="cd_all">Marcar todo pagado</button></div>':''}
+    <div class="tablewrap" style="margin:0"><table><thead><tr><th>Venta / origen</th><th>Base</th><th>%</th><th>Comisión</th><th>Estado</th>${isMgr()?'<th></th>':''}</tr></thead><tbody id="cd_body"></tbody></table></div>
     <div class="actions"><div class="grow"></div><button class="btn primary" id="cd_close">Cerrar</button></div></div>`
   document.body.appendChild(ov);draw()
   if(isMgr()){const ab=ov.querySelector('#cd_all');if(ab)ab.onclick=async()=>{for(const l of mine){if(!COM_PAID.has(keyOf(l)))await setPaid(l,true)}draw();toast('Marcadas ✓')}}
