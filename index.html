@@ -105,6 +105,9 @@ const fmtCur=(n,mon)=>(mon||'USD')+' '+(Number(n||0)).toLocaleString('es',{minim
 const num=n=>(Number(n||0)).toLocaleString('es')
 const nameOf=id=>{const s=state.setters.find(x=>x.id===id);return s?s.nombre:null}
 const CANALES=[['lanzamiento','Lanzamiento'],['funnel','Funnel'],['referido','Referido']]
+const EQUIPOS=[['','— sin equipo —'],['nexus','Nexus'],['puente','Puente']]
+const equipoLabel=e=>e==='nexus'?'Nexus':e==='puente'?'Puente':'—'
+const directorDe=eq=>eq?state.setters.find(p=>p.rol==='director'&&p.equipo===eq):null
 function srcVentas(q,val){if(!val||val==='all')return q;if(val==='funnel'||val==='referido')return q.eq('canal',val);return q.eq('lanzamiento_id',val)}
 function srcEmbed(q,val){if(!val||val==='all')return q;if(val==='funnel'||val==='referido')return q.eq('ventas.canal',val);return q.eq('ventas.lanzamiento_id',val)}
 function srcOptions(sel,lanzs){return `<option value="all" ${sel==='all'?'selected':''}>Todos</option>`+(lanzs||[]).map(l=>`<option value="${l.id}" ${sel===l.id?'selected':''}>${lanzLabel(l)}</option>`).join('')+`<option value="funnel" ${sel==='funnel'?'selected':''}>Funnel</option><option value="referido" ${sel==='referido'?'selected':''}>Referidos</option>`}
@@ -139,7 +142,7 @@ async function afterLogin(session){me=session.user
   if(!myProfile)myProfile={nombre:(me.email||'Usuario'),rol:'setter'}
   try{await ensureLanzamiento()}catch(e){console.error('lanz',e)}
   try{await ensureClases()}catch(e){console.error('clases',e)}
-  try{const{data:setters}=await sb.from('profiles').select('id,nombre,rol,com_setter_pct,com_closer_pct').eq('activo',true);state.setters=setters||[]}catch(e){console.error('setters',e)}
+  try{const{data:setters}=await sb.from('profiles').select('id,nombre,rol,equipo,com_setter_pct,com_closer_pct,com_director_pct').eq('activo',true);state.setters=setters||[]}catch(e){console.error('setters',e)}
   if(!location.hash||location.hash==='#')location.hash='#/panel'
   renderShell();route()}
 async function ensureLanzamiento(){let{data}=await sb.from('lanzamientos').select('*').eq('activo',true).order('created_at',{ascending:false}).limit(1)
@@ -152,7 +155,7 @@ async function ensureClases(){if(!state.lanz)return
 
 /* ---------- SHELL + ROUTER ---------- */
 const NAV=[
-  {g:null,items:[['#/panel','Panel general'],['#/calendario','Calendario']]},
+  {g:null,items:[['#/panel','Panel general'],['#/calendario','Calendario'],['#/guia','Guía']]},
   {g:'Setter',items:[['#/leads','Leads'],['#/nuevo','Nuevo lead'],['#/importar','Importar / agendar'],['#/kpis','KPIs diarios']]},
   {g:'Closer',items:[['#/triage','Triage'],['#/reporte','Reporte de llamadas'],['#/grilla','Grilla de reportes']]},
   {g:'Ventas',items:[['#/ventas','Ventas'],['#/senas','Señas']]},
@@ -168,7 +171,7 @@ function renderShell(){
   document.getElementById('so').onclick=()=>sb.auth.signOut();window.onhashchange=route}
 function setActive(){root.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('on',a.dataset.h===location.hash))}
 function route(){setActive();const h=location.hash
-  const map={'#/panel':renderPanel,'#/calendario':renderCalendario,'#/leads':renderLeads,'#/nuevo':()=>openLeadModal(),'#/importar':renderImport,'#/kpis':renderKpis,'#/triage':renderTriage,'#/reporte':renderReporte,'#/grilla':renderGrilla,'#/ventas':renderVentas,'#/senas':renderSenas,'#/comisiones':renderComisiones,'#/facturacion':renderFacturacion,'#/marketing':renderMarketing,'#/cobros':renderCobros}
+  const map={'#/panel':renderPanel,'#/calendario':renderCalendario,'#/guia':renderGuia,'#/leads':renderLeads,'#/nuevo':()=>openLeadModal(),'#/importar':renderImport,'#/kpis':renderKpis,'#/triage':renderTriage,'#/reporte':renderReporte,'#/grilla':renderGrilla,'#/ventas':renderVentas,'#/senas':renderSenas,'#/comisiones':renderComisiones,'#/facturacion':renderFacturacion,'#/marketing':renderMarketing,'#/cobros':renderCobros}
   ;(map[h]||renderPanel)()}
 function head(sub,title,actions=''){return `<div class="top"><div><div class="sub">${sub}</div><h1>${title}</h1></div><div class="grow"></div>${actions}</div>`}
 
@@ -426,9 +429,11 @@ function ventaFormHTML(p){return `
   <div class="field"><label>Programa</label><input class="inp" id="${p}prog" placeholder="Programa vendido"/></div>
   <div class="row2"><div class="field"><label>Setter (comisión)</label><select id="${p}setter"><option value="">— sin setter —</option>${state.setters.map(s=>`<option value="${s.id}">${esc(s.nombre)}</option>`).join('')}</select></div>
     <div class="field"><label>Closer (comisión)</label><select id="${p}closer"><option value="">— sin closer —</option>${state.setters.map(s=>`<option value="${s.id}" ${s.id===(me&&me.id)?'selected':''}>${esc(s.nombre)}</option>`).join('')}</select></div></div>
+  <div class="field"><label>Equipo (para comisión del director)</label><select id="${p}equipo">${EQUIPOS.map(e=>`<option value="${e[0]}">${e[1]}</option>`).join('')}</select></div>
   <div class="row3"><div class="field"><label>Ticket (total)</label><input class="inp" id="${p}ticket" type="number" placeholder="0"/></div>
     <div class="field"><label>Dinero que pagó</label><input class="inp" id="${p}pago" type="number" placeholder="0"/></div>
     <div class="field"><label>Dinero a cobrar</label><input class="inp" id="${p}cobrar" type="number" placeholder="0"/></div></div>
+  <div class="field"><label>Base comisionable (tope de comisión)</label><input class="inp" id="${p}basecom" type="number" placeholder="= ticket si no hay recargo"/><div class="sub2" style="margin-top:5px">Si cobrás recargo/interés por cuotas, poné acá el precio base (ej: 500). El setter y closer comisionan hasta este monto; el recargo no comisiona. Dejalo vacío si no hay recargo.</div></div>
   <div id="${p}cuotasBox"></div>
   <div class="field"><label>Seña a aplicar (opcional)</label><select id="${p}sena"><option value="">— sin seña —</option></select><div class="sub2" style="margin-top:5px">La seña no suma al ticket ni comisiona; entra al cash collected cuando se cobra la 1ª cuota.</div></div>
   <div class="field"><label>Comprobante de pago</label><input class="inp" id="${p}file" type="file" accept="image/*,application/pdf" style="padding:10px"/></div>`}
@@ -452,7 +457,7 @@ function wireVentaForm(p){const g=id=>document.getElementById(p+id)
 // Lee los valores del formulario de venta
 function readVentaForm(p){const g=id=>document.getElementById(p+id),cuotas=[]
   document.querySelectorAll('#'+p+'cuotasBox [data-cuota]').forEach(r=>{const monto=Number(r.querySelector('.cuotaMonto').value||0),venc=r.querySelector('.cuotaVenc').value||null;if(monto>0)cuotas.push({monto,vencimiento:venc})})
-  return{canal:(g('canal')&&g('canal').value)||'lanzamiento',forma:g('forma').value,moneda:g('mon').value,fx:(g('fx')&&Number(g('fx').value))||0,billetera:g('bill').value.trim(),programa:g('prog').value.trim(),setter:g('setter').value||null,closer:(g('closer')&&g('closer').value)||null,sena:(g('sena')&&g('sena').value)||null,ticket:Number(g('ticket').value||0),pago:Number(g('pago').value||0),cobrar:Number(g('cobrar').value||0),cuotas,file:(g('file').files&&g('file').files[0])||null}}
+  return{canal:(g('canal')&&g('canal').value)||'lanzamiento',forma:g('forma').value,moneda:g('mon').value,fx:(g('fx')&&Number(g('fx').value))||0,billetera:g('bill').value.trim(),programa:g('prog').value.trim(),setter:g('setter').value||null,closer:(g('closer')&&g('closer').value)||null,equipo:(g('equipo')&&g('equipo').value)||null,sena:(g('sena')&&g('sena').value)||null,ticket:Number(g('ticket').value||0),pago:Number(g('pago').value||0),cobrar:Number(g('cobrar').value||0),baseComision:(g('basecom')&&Number(g('basecom').value))||0,cuotas,file:(g('file').files&&g('file').files[0])||null}}
 // Sube el comprobante a Supabase Storage (bucket 'comprobantes') y devuelve la URL pública
 async function uploadComprobante(file){if(!file)return null
   const ext=(file.name.split('.').pop()||'bin').toLowerCase(),rnd=Math.random().toString(36).slice(2,8)
@@ -469,7 +474,7 @@ async function saveVenta(v){const rate=v.moneda==='USD'?1:(Number(v.fx)>0?Number
   const closerId=v.closer||v.closerId||me.id,setterId=v.setterId||v.setter||null
   const com_setter_pct=setterId?pctOf(setterId,'com_setter_pct'):0,com_closer_pct=pctOf(closerId,'com_closer_pct')
   const canal=v.canal||'lanzamiento',lanzId=canal==='lanzamiento'?(state.lanz?state.lanz.id:null):null
-  const venta={lanzamiento_id:lanzId,canal,lead_id:v.leadId||null,cliente:v.cliente||null,closer_id:closerId,setter_id:setterId,com_setter_pct,com_closer_pct,reporte_id:v.reporteId||null,programa:v.programa||null,moneda:v.moneda,cotizacion:rate,ticket:v.ticket,pagado:v.pago,a_cobrar:v.cobrar,forma_pago:v.forma,billetera:v.billetera||null,comprobante_url,origen}
+  const venta={lanzamiento_id:lanzId,canal,equipo:v.equipo||null,lead_id:v.leadId||null,cliente:v.cliente||null,closer_id:closerId,setter_id:setterId,com_setter_pct,com_closer_pct,reporte_id:v.reporteId||null,programa:v.programa||null,moneda:v.moneda,cotizacion:rate,ticket:v.ticket,base_comisionable:(Number(v.baseComision)>0?Number(v.baseComision):v.ticket),pagado:v.pago,a_cobrar:v.cobrar,forma_pago:v.forma,billetera:v.billetera||null,comprobante_url,origen}
   let ventaId=v.editId
   if(v.editId){
     const{data:oc}=await sb.from('cuotas').select('id').eq('venta_id',v.editId)
@@ -526,7 +531,9 @@ async function openVentaModal(venta){const isEdit=!!venta
   ov.querySelector('#v_cancel').onclick=()=>ov.remove();wireVentaForm('v_')
   let vSenas=[]
   const gid=id=>document.getElementById('v_'+id)
-  const vLead=ov.querySelector('#v_lead');vLead.onchange=()=>{const l=(leads||[]).find(x=>x.id===vLead.value),ss=gid('setter');if(ss)ss.value=(l&&l.asesor_id)||'';const sm=vSenas.find(s=>s.lead_id===vLead.value),sn=gid('sena');if(sn&&!isEdit)sn.value=sm?sm.id:''}
+  const setEquipoFromSetter=()=>{const st=state.setters.find(x=>x.id===gid('setter').value),eq=gid('equipo');if(eq&&!isEdit&&st&&st.equipo)eq.value=st.equipo}
+  const vLead=ov.querySelector('#v_lead');vLead.onchange=()=>{const l=(leads||[]).find(x=>x.id===vLead.value),ss=gid('setter');if(ss){ss.value=(l&&l.asesor_id)||'';setEquipoFromSetter()}const sm=vSenas.find(s=>s.lead_id===vLead.value),sn=gid('sena');if(sn&&!isEdit)sn.value=sm?sm.id:''}
+  const vSet=gid('setter');if(vSet)vSet.onchange=setEquipoFromSetter
   vSenas=await loadSenaOptions('v_')
   if(isEdit){
     vLead.value=venta.lead_id||'';gid('cliente').value=venta.cliente||''
@@ -537,7 +544,9 @@ async function openVentaModal(venta){const isEdit=!!venta
     gid('bill').value=venta.billetera||'';gid('prog').value=venta.programa||''
     if(venta.setter_id)gid('setter').value=venta.setter_id
     if(venta.closer_id)gid('closer').value=venta.closer_id
+    gid('equipo').value=venta.equipo||''
     gid('ticket').value=venta.ticket!=null?venta.ticket:'';gid('pago').value=venta.pagado!=null?venta.pagado:''
+    if(venta.base_comisionable!=null)gid('basecom').value=venta.base_comisionable
     gid('forma').dispatchEvent(new Event('change'))
     const{data:pc}=await sb.from('cuotas').select('monto,vencimiento').eq('venta_id',venta.id).eq('estado','pendiente').order('vencimiento')
     const rows=ov.querySelectorAll('#v_cuotasBox [data-cuota]')
@@ -661,12 +670,13 @@ async function renderComisiones(){
       <div class="card" style="margin:0"><h3>Setters</h3><p class="cdesc">Comisión por el lead trabajado / agendado.</p><div id="setTbl"><div class="empty" style="padding:24px">Cargando…</div></div></div>
       <div class="card" style="margin:0"><h3>Closers</h3><p class="cdesc">Comisión por la venta cerrada.</p><div id="cloTbl"><div class="empty" style="padding:24px">Cargando…</div></div></div>
     </div>
+    <div class="card" style="margin:0 30px 16px"><h3>Directores comerciales</h3><p class="cdesc">Comisión sobre la facturación total (ticket) de las ventas de su equipo — sin topes.</p><div id="dirTbl"><div class="empty" style="padding:24px">Cargando…</div></div></div>
     <p class="cdesc" style="margin:0 30px 24px">La comisión se genera sobre la plata efectivamente cobrada (cuotas en estado cobrado). Cada venta congela el % del momento.</p>`
   document.getElementById('cm_lanz').onchange=e=>{comLanzFilter=e.target.value;renderComisiones()}
   const nb=document.getElementById('cm_lanzmgr');if(nb)nb.onclick=openLanzModal
   if(isMgr())renderComConfig()
   renderComResumen()
-  let vq=sb.from('ventas').select('id,cliente,lead_id,leads(nombre),setter_id,closer_id,com_setter_pct,com_closer_pct,lanzamiento_id')
+  let vq=sb.from('ventas').select('id,cliente,lead_id,leads(nombre),setter_id,closer_id,com_setter_pct,com_closer_pct,lanzamiento_id,cotizacion,base_comisionable,ticket,equipo')
   vq=srcVentas(vq,comLanzFilter)
   const{data:ventas,error:ve}=await vq
   if(ve){document.getElementById('setTbl').innerHTML=`<div class="empty" style="padding:24px">Error: ${esc(ve.message)}</div>`;return}
@@ -680,21 +690,29 @@ async function renderComisiones(){
   const{data:pagos}=await sb.from('comision_pagos').select('origen_tipo,origen_id,rol').limit(20000)
   const paid=new Set((pagos||[]).map(p=>p.origen_tipo+':'+p.origen_id+':'+p.rol))
   const lines=[],ventasConCobro=new Set()
-  const push=(tipo,id,base,v)=>{const label=(v.leads&&v.leads.nombre)||v.cliente||'—'
-    if(v.setter_id)lines.push({tipo,id,ventaId:v.id,rol:'setter',personaId:v.setter_id,base,pct:Number(v.com_setter_pct||0),monto:base*Number(v.com_setter_pct||0)/100,label,lanzId:v.lanzamiento_id})
-    if(v.closer_id)lines.push({tipo,id,ventaId:v.id,rol:'closer',personaId:v.closer_id,base,pct:Number(v.com_closer_pct||0),monto:base*Number(v.com_closer_pct||0)/100,label,lanzId:v.lanzamiento_id})}
-  ;(cuotas||[]).forEach(c=>{const v=vmap[c.venta_id];if(!v)return;ventasConCobro.add(c.venta_id);push('cuota',c.id,Number(c.monto_usd||0),v)})
-  ;(senas||[]).forEach(s=>{const v=vmap[s.venta_id];if(!v||!ventasConCobro.has(s.venta_id))return;push('sena',s.id,Number(s.monto_usd||0),v)})
+  const push=(tipo,id,comBase,v)=>{const label=(v.leads&&v.leads.nombre)||v.cliente||'—'
+    if(v.setter_id)lines.push({tipo,id,ventaId:v.id,rol:'setter',personaId:v.setter_id,base:comBase,pct:Number(v.com_setter_pct||0),monto:comBase*Number(v.com_setter_pct||0)/100,label,lanzId:v.lanzamiento_id})
+    if(v.closer_id)lines.push({tipo,id,ventaId:v.id,rol:'closer',personaId:v.closer_id,base:comBase,pct:Number(v.com_closer_pct||0),monto:comBase*Number(v.com_closer_pct||0)/100,label,lanzId:v.lanzamiento_id})}
+  const byV={}
+  ;(cuotas||[]).forEach(c=>{const v=vmap[c.venta_id];if(!v)return;ventasConCobro.add(c.venta_id);(byV[c.venta_id]=byV[c.venta_id]||[]).push({tipo:'cuota',id:c.id,monto:Number(c.monto_usd||0)})})
+  ;(senas||[]).forEach(s=>{const v=vmap[s.venta_id];if(!v||!ventasConCobro.has(s.venta_id))return;(byV[s.venta_id]=byV[s.venta_id]||[]).push({tipo:'sena',id:s.id,monto:Number(s.monto_usd||0)})})
+  Object.keys(byV).forEach(vid=>{const v=vmap[vid],cotz=Number(v.cotizacion)||1,cap=(v.base_comisionable!=null&&Number(v.base_comisionable)>0)?Number(v.base_comisionable)/cotz:Infinity;let cum=0
+    byV[vid].forEach(ev=>{const prev=Math.min(cum,cap);cum+=ev.monto;const now=Math.min(cum,cap);push(ev.tipo,ev.id,Math.max(0,now-prev),v)})})
+  // comisión de director: sobre la facturación completa (ticket) de las ventas de su equipo, SIN topes
+  ;(ventas||[]).forEach(v=>{const dir=directorDe(v.equipo);if(!dir||!(Number(dir.com_director_pct)>0))return
+    const base=Number(v.ticket||0)/(Number(v.cotizacion)||1),pct=Number(dir.com_director_pct)||0
+    lines.push({tipo:'venta',id:v.id,ventaId:v.id,rol:'director',personaId:dir.id,base,pct,monto:base*pct/100,label:(v.leads&&v.leads.nombre)||v.cliente||'—',lanzId:v.lanzamiento_id})})
   COM_LINES=lines;COM_PAID=paid
   const roleAgg=rol=>{const o={};lines.filter(l=>l.rol===rol).forEach(l=>{const a=o[l.personaId]=o[l.personaId]||{dev:0,pag:0};a.dev+=l.monto;if(paid.has(l.tipo+':'+l.id+':'+l.rol))a.pag+=l.monto});return o}
-  const setAgg=roleAgg('setter'),cloAgg=roleAgg('closer')
+  const setAgg=roleAgg('setter'),cloAgg=roleAgg('closer'),dirAgg=roleAgg('director')
   const tot=o=>Object.values(o).reduce((a,x)=>({dev:a.dev+x.dev,pag:a.pag+x.pag}),{dev:0,pag:0})
-  const ts=tot(setAgg),tc=tot(cloAgg),dev=ts.dev+tc.dev,pag=ts.pag+tc.pag
+  const ts=tot(setAgg),tc=tot(cloAgg),tdd=tot(dirAgg),dev=ts.dev+tc.dev+tdd.dev,pag=ts.pag+tc.pag+tdd.pag
   document.getElementById('ck').innerHTML=[['Ganado',money(dev)],['Pagado',money(pag)],['Pendiente',money(dev-pag)]].map(([l,n])=>`<div class="fcell"><div class="n" style="font-size:24px">${n}</div><div class="l">${l}</div></div>`).join('')
   const tbl=(o,rol)=>{const list=Object.keys(o).map(id=>{const p=state.setters.find(x=>x.id===id);return{id,nombre:(p&&p.nombre)||'—',dev:o[id].dev,pag:o[id].pag,pend:o[id].dev-o[id].pag}}).filter(r=>r.dev>0.005).sort((a,b)=>b.pend-a.pend)
     return list.length?`<div class="tablewrap" style="margin:0"><table><thead><tr><th>Persona</th><th>Ganado</th><th>Pagado</th><th>Pend.</th><th></th></tr></thead><tbody>${list.map(r=>`<tr><td><span class="nm" data-det="${rol}|${r.id}" style="cursor:pointer;border-bottom:1px dotted var(--faint)">${esc(r.nombre)}</span></td><td>${money(r.dev)}</td><td>${money(r.pag)}</td><td class="nm" style="color:${r.pend>0.001?'var(--warn)':'var(--good)'}">${money(r.pend)}</td><td><button class="pg" data-det="${rol}|${r.id}">ver ventas</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty" style="padding:24px">Sin comisiones en este lanzamiento.</div>`}
   document.getElementById('setTbl').innerHTML=tbl(setAgg,'setter')
   document.getElementById('cloTbl').innerHTML=tbl(cloAgg,'closer')
+  document.getElementById('dirTbl').innerHTML=tbl(dirAgg,'director')
   document.querySelectorAll('[data-det]').forEach(b=>b.onclick=()=>{const parts=b.dataset.det.split('|');openComDetalle(parts[0],parts[1])})}
 function openComDetalle(rol,personaId){
   const p=state.setters.find(x=>x.id===personaId),nombre=(p&&p.nombre)||'—'
@@ -707,7 +725,7 @@ function openComDetalle(rol,personaId){
       const est=pag>=sub-0.001?'<span class="chip cobrado">pagada</span>':pag>0?'<span class="chip potencial">parcial</span>':'<span class="chip pendiente">pendiente</span>'
       const head=`<tr><td class="nm">${esc(grp.label)}</td><td></td><td></td><td class="nm">${money(sub)}</td><td>${est}</td>${isMgr()?`<td><button class="pg" data-togv="${k}">${pag>=sub-0.001?'desmarcar':'pagar venta'}</button></td>`:''}</tr>`
       const rows=grp.items.map(({l,i})=>{const pd=COM_PAID.has(keyOf(l))
-        return `<tr><td class="sub2" style="padding-left:22px">↳ ${l.tipo==='sena'?'seña':'cuota'}</td><td class="sub2">${money(l.base)}</td><td class="sub2">${l.pct}%</td><td>${money(l.monto)}</td><td>${pd?'<span class="chip cobrado">pagada</span>':'<span class="chip pendiente">pend.</span>'}</td>${isMgr()?`<td><button class="pg" data-tog="${i}">${pd?'quitar':'pagar'}</button></td>`:''}</tr>`}).join('')
+        return `<tr><td class="sub2" style="padding-left:22px">↳ ${l.tipo==='sena'?'seña':l.tipo==='venta'?'facturación':'cuota'}</td><td class="sub2">${money(l.base)}</td><td class="sub2">${l.pct}%</td><td>${money(l.monto)}</td><td>${pd?'<span class="chip cobrado">pagada</span>':'<span class="chip pendiente">pend.</span>'}</td>${isMgr()?`<td><button class="pg" data-tog="${i}">${pd?'quitar':'pagar'}</button></td>`:''}</tr>`}).join('')
       return head+rows}).join('')}
   const totals=()=>{const dev=mine.reduce((a,l)=>a+l.monto,0),pag=mine.reduce((a,l)=>a+(COM_PAID.has(keyOf(l))?l.monto:0),0);return{dev,pag}}
   const draw=()=>{const t=totals();ov.querySelector('#cd_sum').textContent=`Comisión total ${money(t.dev)} · Pagado ${money(t.pag)} · Pendiente ${money(t.dev-t.pag)}`;ov.querySelector('#cd_body').innerHTML=body()||`<tr><td colspan="6" class="empty">Sin ventas con comisión todavía.</td></tr>`;wire()}
@@ -730,18 +748,24 @@ function openComDetalle(rol,personaId){
 async function renderComResumen(){const el=document.getElementById('comResumen');if(!el)return
   const{data:lanzs}=await sb.from('lanzamientos').select('id,numero,nombre')
   const lmap={};(lanzs||[]).forEach(l=>lmap[l.id]=l)
-  const{data:ventas}=await sb.from('ventas').select('id,lanzamiento_id,canal,setter_id,closer_id,com_setter_pct,com_closer_pct').limit(10000)
+  const{data:ventas}=await sb.from('ventas').select('id,lanzamiento_id,canal,setter_id,closer_id,com_setter_pct,com_closer_pct,cotizacion,base_comisionable,ticket,equipo').limit(10000)
   const vmap={};(ventas||[]).forEach(v=>vmap[v.id]=v)
   const{data:cuotas}=await sb.from('cuotas').select('id,monto_usd,venta_id').eq('estado','cobrado').limit(10000)
   const{data:senas}=await sb.from('senas').select('id,monto_usd,venta_id').eq('estado','aplicada').limit(10000)
   const{data:pagos}=await sb.from('comision_pagos').select('origen_tipo,origen_id,rol').limit(20000)
   const paid=new Set((pagos||[]).map(p=>p.origen_tipo+':'+p.origen_id+':'+p.rol))
   const bucketOf=v=>(v.canal&&v.canal!=='lanzamiento')?v.canal:(v.lanzamiento_id||'sin')
-  const B={},add=(tipo,id,monto,v)=>{const b=bucketOf(v),o=B[b]=B[b]||{gan:0,pag:0}
-    ;['setter','closer'].forEach(rol=>{const pid=rol==='setter'?v.setter_id:v.closer_id;if(!pid)return;const pct=Number(rol==='setter'?v.com_setter_pct:v.com_closer_pct)||0,com=monto*pct/100;if(com<=0.005)return;o.gan+=com;if(paid.has(tipo+':'+id+':'+rol))o.pag+=com})}
-  const conCobro=new Set()
-  ;(cuotas||[]).forEach(c=>{const v=vmap[c.venta_id];if(!v)return;conCobro.add(c.venta_id);add('cuota',c.id,Number(c.monto_usd||0),v)})
-  ;(senas||[]).forEach(s=>{const v=vmap[s.venta_id];if(!v||!conCobro.has(s.venta_id))return;add('sena',s.id,Number(s.monto_usd||0),v)})
+  const B={},add=(tipo,id,comBase,v)=>{const b=bucketOf(v),o=B[b]=B[b]||{gan:0,pag:0}
+    ;['setter','closer'].forEach(rol=>{const pid=rol==='setter'?v.setter_id:v.closer_id;if(!pid)return;const pct=Number(rol==='setter'?v.com_setter_pct:v.com_closer_pct)||0,com=comBase*pct/100;if(com<=0.005)return;o.gan+=com;if(paid.has(tipo+':'+id+':'+rol))o.pag+=com})}
+  const conCobro=new Set(),byV={}
+  ;(cuotas||[]).forEach(c=>{const v=vmap[c.venta_id];if(!v)return;conCobro.add(c.venta_id);(byV[c.venta_id]=byV[c.venta_id]||[]).push({tipo:'cuota',id:c.id,monto:Number(c.monto_usd||0)})})
+  ;(senas||[]).forEach(s=>{const v=vmap[s.venta_id];if(!v||!conCobro.has(s.venta_id))return;(byV[s.venta_id]=byV[s.venta_id]||[]).push({tipo:'sena',id:s.id,monto:Number(s.monto_usd||0)})})
+  Object.keys(byV).forEach(vid=>{const v=vmap[vid],cotz=Number(v.cotizacion)||1,cap=(v.base_comisionable!=null&&Number(v.base_comisionable)>0)?Number(v.base_comisionable)/cotz:Infinity;let cum=0
+    byV[vid].forEach(ev=>{const prev=Math.min(cum,cap);cum+=ev.monto;const now=Math.min(cum,cap);add(ev.tipo,ev.id,Math.max(0,now-prev),v)})})
+  // director: facturación completa (ticket) de su equipo, sin topes
+  ;(ventas||[]).forEach(v=>{const dir=directorDe(v.equipo);if(!dir||!(Number(dir.com_director_pct)>0))return
+    const b=bucketOf(v),o=B[b]=B[b]||{gan:0,pag:0},base=Number(v.ticket||0)/(Number(v.cotizacion)||1),com=base*Number(dir.com_director_pct)/100
+    if(com<=0.005)return;o.gan+=com;if(paid.has('venta:'+v.id+':director'))o.pag+=com})
   const label=b=>b==='funnel'?'Funnel':b==='referido'?'Referidos':b==='sin'?'Sin lanzamiento':(lmap[b]?lanzLabel(lmap[b]):'Lanzamiento')
   const keys=Object.keys(B).sort((a,b)=>(B[b].gan-B[b].pag)-(B[a].gan-B[a].pag))
   const totPend=keys.reduce((t,b)=>t+(B[b].gan-B[b].pag),0)
@@ -769,13 +793,13 @@ async function openLanzModal(){
     await sb.from('lanzamientos').update({activo:false}).eq('activo',true)
     const{data,error}=await sb.from('lanzamientos').insert({numero:num!==''?Number(num):null,nombre:nom,activo:true}).select().single();if(error){toast('Error: '+error.message);return}
     state.lanz=data;comLanzFilter=data.id;toast('Lanzamiento creado ✓');ov.remove();renderComisiones()}}
-async function renderComConfig(){const{data:profs}=await sb.from('profiles').select('id,nombre,rol,com_setter_pct,com_closer_pct').eq('activo',true).order('rol')
-  const ROLES=['setter','closer','manager','admin']
-  document.getElementById('cfgWrap').innerHTML=`<div class="card"><h3>Equipo · roles y comisiones</h3><p class="cdesc">Cambiá el rol y el % de cada persona. Los % se aplican a las próximas ventas (las ya cargadas conservan el suyo).</p>
-    <div class="tablewrap" style="margin:0"><table><thead><tr><th>Persona</th><th>Rol</th><th>% como setter</th><th>% como closer</th><th></th></tr></thead><tbody>${(profs||[]).map(p=>`<tr data-p="${p.id}"><td class="nm">${esc(p.nombre)}</td><td><select class="rol">${ROLES.map(r=>`<option ${p.rol===r?'selected':''}>${r}</option>`).join('')}</select></td><td><input class="inp cs" type="number" step="0.5" value="${p.com_setter_pct||0}" style="max-width:110px"/></td><td><input class="inp cc" type="number" step="0.5" value="${p.com_closer_pct||0}" style="max-width:110px"/></td><td><button class="pg" data-save="${p.id}">Guardar</button></td></tr>`).join('')}</tbody></table></div></div>`
-  document.querySelectorAll('[data-save]').forEach(b=>b.onclick=async()=>{const tr=b.closest('tr'),rol=tr.querySelector('.rol').value,cs=Number(tr.querySelector('.cs').value||0),cc=Number(tr.querySelector('.cc').value||0)
-    const{error}=await sb.from('profiles').update({rol,com_setter_pct:cs,com_closer_pct:cc}).eq('id',b.dataset.save);if(error){toast('Error: '+error.message);return}
-    const s=state.setters.find(x=>x.id===b.dataset.save);if(s){s.rol=rol;s.com_setter_pct=cs;s.com_closer_pct=cc};toast('Guardado ✓')})}
+async function renderComConfig(){const{data:profs}=await sb.from('profiles').select('id,nombre,rol,equipo,com_setter_pct,com_closer_pct,com_director_pct').eq('activo',true).order('rol')
+  const ROLES=['setter','closer','director','manager','admin']
+  document.getElementById('cfgWrap').innerHTML=`<div class="card"><h3>Equipo · roles y comisiones</h3><p class="cdesc">Rol, equipo y % de cada persona. El director comisiona sobre la facturación de su equipo (sin topes). Los % se aplican a las próximas ventas.</p>
+    <div class="tablewrap" style="margin:0"><table><thead><tr><th>Persona</th><th>Rol</th><th>Equipo</th><th>% setter</th><th>% closer</th><th>% director</th><th></th></tr></thead><tbody>${(profs||[]).map(p=>`<tr data-p="${p.id}"><td class="nm">${esc(p.nombre)}</td><td><select class="rol">${ROLES.map(r=>`<option ${p.rol===r?'selected':''}>${r}</option>`).join('')}</select></td><td><select class="eq">${EQUIPOS.map(e=>`<option value="${e[0]}" ${(p.equipo||'')===e[0]?'selected':''}>${e[1]}</option>`).join('')}</select></td><td><input class="inp cs" type="number" step="0.5" value="${p.com_setter_pct||0}" style="max-width:90px"/></td><td><input class="inp cc" type="number" step="0.5" value="${p.com_closer_pct||0}" style="max-width:90px"/></td><td><input class="inp cd" type="number" step="0.5" value="${p.com_director_pct||0}" style="max-width:90px"/></td><td><button class="pg" data-save="${p.id}">Guardar</button></td></tr>`).join('')}</tbody></table></div></div>`
+  document.querySelectorAll('[data-save]').forEach(b=>b.onclick=async()=>{const tr=b.closest('tr'),rol=tr.querySelector('.rol').value,equipo=tr.querySelector('.eq').value||null,cs=Number(tr.querySelector('.cs').value||0),cc=Number(tr.querySelector('.cc').value||0),cd=Number(tr.querySelector('.cd').value||0)
+    const{error}=await sb.from('profiles').update({rol,equipo,com_setter_pct:cs,com_closer_pct:cc,com_director_pct:cd}).eq('id',b.dataset.save);if(error){toast('Error: '+error.message);return}
+    const s=state.setters.find(x=>x.id===b.dataset.save);if(s){s.rol=rol;s.equipo=equipo;s.com_setter_pct=cs;s.com_closer_pct=cc;s.com_director_pct=cd};toast('Guardado ✓')})}
 
 /* ================= CALENDARIO ================= */
 async function renderCalendario(){view().innerHTML=head('AGENDA','Calendario')+`<div class="card"><div class="agenda" id="ag"></div></div>`
@@ -789,6 +813,141 @@ async function renderCalendario(){view().innerHTML=head('AGENDA','Calendario')+`
   const byDay={};items.forEach(i=>{(byDay[i.d]=byDay[i.d]||[]).push(i)})
   const days=Object.keys(byDay)
   document.getElementById('ag').innerHTML=days.length?days.map(d=>`<div class="day">${new Date(d+'T00:00').toLocaleDateString('es',{weekday:'long',day:'2-digit',month:'long'})}</div>${byDay[d].map(i=>`<div class="ev"><span class="tg">${i.tg}</span><span>${esc(i.t)}</span></div>`).join('')}`).join(''):`<div class="empty">No hay clases ni seguimientos agendados.</div>`}
+
+/* ================= GUÍA ================= */
+function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
+<style>
+  .guia{padding:0 30px 30px;max-width:900px}
+  .guia .toc{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 18px}
+  .guia .toc a{font-size:13px;color:var(--muted);text-decoration:none;border:1px solid var(--line-2);border-radius:20px;padding:6px 13px;cursor:pointer}
+  .guia .toc a:hover{color:var(--ink);border-color:var(--accent)}
+  .guia h2{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin:34px 0 12px;border-bottom:1px solid var(--line);padding-bottom:10px}
+  .guia .gcard{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin:12px 0}
+  .guia .gcard h3{margin:0 0 4px;font-size:16px}
+  .guia .role{border-left:3px solid var(--line-2)}
+  .guia .role.setter{border-left-color:var(--fluido)}.guia .role.closer{border-left-color:var(--potencial)}
+  .guia .role.cobros{border-left-color:#e879f9}.guia .role.manager{border-left-color:#7c8cff}
+  .guia .tag{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:3px 9px;border-radius:20px;margin-bottom:8px}
+  .guia .tag.setter{color:var(--fluido);background:rgba(70,224,160,.12)}.guia .tag.closer{color:var(--potencial);background:rgba(224,178,74,.12)}
+  .guia .tag.cobros{color:#e879f9;background:rgba(232,121,249,.12)}.guia .tag.manager{color:#7c8cff;background:rgba(124,140,255,.12)}
+  .guia ol.steps{counter-reset:s;list-style:none;padding:0;margin:12px 0 0}
+  .guia ol.steps>li{position:relative;padding:0 0 15px 40px}
+  .guia ol.steps>li::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:-2px;width:26px;height:26px;border-radius:50%;background:var(--surface-2);border:1px solid var(--line-2);color:var(--accent);font-weight:700;font-size:12px;display:grid;place-items:center;font-family:var(--mono)}
+  .guia ol.steps>li:not(:last-child)::after{content:"";position:absolute;left:12.5px;top:26px;bottom:0;width:1px;background:var(--line)}
+  .guia ol.steps b{color:var(--ink)}.guia ol.steps .d{color:var(--muted);font-size:13.5px;margin-top:2px}
+  .guia .lead2{color:var(--muted);font-size:14px;margin:0 0 4px}
+  .guia .flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0 2px}
+  .guia .flow .st{background:var(--surface-2);border:1px solid var(--line-2);border-radius:8px;padding:6px 11px;font-size:13px}.guia .flow .ar{color:var(--faint)}
+  .guia .note{background:linear-gradient(180deg,var(--accent-glow),transparent);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:12px;padding:12px 15px;color:var(--muted);font-size:14px;margin:12px 0}.guia .note b{color:var(--ink)}
+  .guia .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:680px){.guia .grid2{grid-template-columns:1fr}}
+  .guia table{width:100%;border-collapse:collapse;font-size:14px}
+  .guia td,.guia th{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  .guia th{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+  .guia td b{color:var(--ink)}.guia td .m{color:var(--muted)}
+</style>
+<div class="guia">
+  <p class="lead2">Cómo usar el CRM paso a paso, según tu rol. Si es tu primera vez, empezá por <b style="color:var(--ink)">Arrancar</b> y después andá a la sección de tu rol.</p>
+  <div class="toc">
+    <a onclick="document.getElementById('g_arr').scrollIntoView({behavior:'smooth'})">Arrancar</a>
+    <a onclick="document.getElementById('g_set').scrollIntoView({behavior:'smooth'})">Setter</a>
+    <a onclick="document.getElementById('g_clo').scrollIntoView({behavior:'smooth'})">Closer</a>
+    <a onclick="document.getElementById('g_cob').scrollIntoView({behavior:'smooth'})">Ventas / Cobros</a>
+    <a onclick="document.getElementById('g_man').scrollIntoView({behavior:'smooth'})">Manager</a>
+    <a onclick="document.getElementById('g_flu').scrollIntoView({behavior:'smooth'})">Flujos</a>
+    <a onclick="document.getElementById('g_glo').scrollIntoView({behavior:'smooth'})">Glosario</a>
+  </div>
+
+  <h2 id="g_arr">1 · Arrancar (todos)</h2>
+  <div class="gcard"><ol class="steps">
+    <li><b>Entrá al link del CRM</b> y creá tu cuenta con tu email.<div class="d">Primera vez: "Crear una" → email + contraseña + tu nombre.</div></li>
+    <li><b>Avisá al manager</b> que te registraste, para que te asigne tu <b>rol</b>.</li>
+    <li><b>Menú izquierdo</b> = secciones. <b>Arriba a la derecha</b> están los botones de acción (ej: + Nuevo lead).</li>
+  </ol>
+  <div class="note">Regla de oro: <b>cargá todo en el momento</b> (lead, llamada, venta, cobro). El CRM sirve solo si los datos están al día.</div></div>
+
+  <h2 id="g_set">Rol Setter</h2>
+  <div class="gcard role setter"><span class="tag setter">Setter</span><h3>Tu día en el CRM</h3>
+  <p class="lead2">Cargar leads, contactarlos, hacerlos avanzar y agendar la llamada con el closer.</p>
+  <ol class="steps">
+    <li><b>Panel general</b> → "Seguimientos de hoy": tu cola del día.</li>
+    <li><b>Leads → + Nuevo lead</b> (o Importar CSV): nombre, contacto, fuente y temperatura.</li>
+    <li>Abrí el lead y <b>cambiá el Estado</b> a medida que avanza.</li>
+    <li>Cargá un <b>próximo seguimiento</b> (fecha + nota) dentro del lead.</li>
+    <li><b>KPIs diarios</b> → cargá tus números del día.</li>
+  </ol>
+  <div class="flow"><span class="st">Nuevo</span><span class="ar">→</span><span class="st">Contactado</span><span class="ar">→</span><span class="st">Confirmó clase</span><span class="ar">→</span><span class="st">Asistió</span><span class="ar">→</span><span class="st">Agendó</span></div></div>
+
+  <h2 id="g_clo">Rol Closer</h2>
+  <div class="gcard role closer"><span class="tag closer">Closer</span><h3>Tu día en el CRM</h3>
+  <p class="lead2">Preparar la llamada, tomarla y cargar el resultado (y la venta si cerró).</p>
+  <ol class="steps">
+    <li><b>Triage</b> → leads que agendaron y hay que calificar antes de la call.</li>
+    <li><b>Reporte de llamadas</b> → elegí el lead, si se presentó y el Resultado (Cerró / Seguimiento / No cierre).</li>
+    <li>Completá <b>situación, dolores, razones de compra, objeciones y frases clave</b>.</li>
+    <li><b>Si cerró:</b> completá el bloque <b>Venta</b> (ticket, pagó, cuotas, comprobante, setter y closer).</li>
+    <li>Si no cerró: cargá <b>motivo</b> y <b>próximo seguimiento</b>.</li>
+  </ol>
+  <div class="note">El <b>closer</b> y el <b>setter</b> que elijas en la venta definen a quién le corresponde la <b>comisión</b>.</div></div>
+
+  <h2 id="g_cob">Ventas, Señas y Cobros</h2>
+  <div class="gcard role cobros"><span class="tag cobros">Ventas / Cobros</span><h3>Cargar plata y seguirla</h3>
+  <ol class="steps">
+    <li><b>Ventas → + Cargar venta</b>: venta directa. Elegí el <b>Canal</b> (Lanzamiento / Funnel / Referido) para no mezclar.</li>
+    <li><b>Señas → + Registrar seña</b>: reserva del cliente. No cuenta hasta que la venta pague su 1ª cuota.</li>
+    <li><b>Cobros → Cuotas</b>: cuando entra una cuota, tocá <b>"Marcar cobrada"</b>.</li>
+    <li><b>Facturación</b>: facturación y cash por moneda (ARS/USD), total unificado y cash por billetera.</li>
+  </ol></div>
+
+  <h2 id="g_man">Rol Manager</h2>
+  <div class="gcard role manager"><span class="tag manager">Manager</span><h3>Configurar y controlar</h3>
+  <ol class="steps">
+    <li><b>Comisiones → Lanzamientos</b>: numerá el actual (ej: N° 7) o creá uno nuevo.</li>
+    <li><b>Comisiones → Equipo · roles y comisiones</b>: rol + % setter / % closer de cada uno.<div class="d">Si el % está en 0, esa persona no genera comisión.</div></li>
+    <li><b>A pagar por origen</b>: comisiones a pagar por cada lanzamiento / funnel / referidos.</li>
+    <li>Tocá el <b>nombre</b> de una persona → su detalle → marcá comisiones <b>pagadas</b>.</li>
+  </ol></div>
+
+  <h2 id="g_flu">Flujos rápidos</h2>
+  <div class="gcard"><h3>💵 Cargar una venta</h3><ol class="steps">
+    <li><b>Ventas → + Cargar venta</b> (o desde el Reporte si cerraste la call).</li>
+    <li>Lead (o nombre manual) + <b>Canal</b>.</li>
+    <li>Elegí <b>Setter</b> y <b>Closer</b> (comisiones).</li>
+    <li><b>Forma de pago</b>, <b>Ticket</b>, <b>Dinero que pagó</b> y las cuotas (monto + vencimiento).</li>
+    <li><b>Base comisionable:</b> si cobrás recargo/interés, poné el precio base (ej: 500). Si no hay recargo, dejalo vacío.</li>
+    <li>Si no es USD, cargá la <b>cotización</b> (1 USD = ? ARS).</li>
+    <li>Adjuntá el <b>comprobante</b> y guardá. ✅</li>
+  </ol></div>
+  <div class="grid2">
+    <div class="gcard" style="margin:0"><h3>🧾 Seña → venta</h3><ol class="steps">
+      <li>Registrá la seña (monto + comprobante + setter/closer).</li>
+      <li>Al cargar la venta, en "Seña a aplicar" elegís esa seña.</li>
+      <li>Al cobrar la <b>1ª cuota</b>, la seña suma al cash collected.</li>
+    </ol></div>
+    <div class="gcard" style="margin:0"><h3>✅ Marcar comisión pagada</h3><ol class="steps">
+      <li><b>Comisiones</b> → tocá el <b>nombre</b> de la persona.</li>
+      <li>Detalle por venta: Ganado / Pagado / Pendiente.</li>
+      <li>Tocá <b>"pagar"</b> cuando le transferiste.</li>
+    </ol></div>
+  </div>
+  <div class="gcard"><h3>✏️ Corregir algo mal cargado</h3>
+    <div class="flow"><span class="st">Ventas / Señas</span><span class="ar">→</span><span class="st">clic en la fila</span><span class="ar">→</span><span class="st">editar o eliminar</span></div>
+    <p class="lead2" style="margin-top:8px">Podés cambiar montos, moneda, cuotas, reemplazar comprobante o eliminar. <b style="color:var(--ink)">Ojo:</b> editar una venta regenera sus cuotas.</p></div>
+
+  <h2 id="g_glo">Glosario</h2>
+  <div class="gcard"><table>
+    <tr><th>Término</th><th>Qué significa</th></tr>
+    <tr><td><b>Lead</b></td><td class="m">Persona interesada que estás trabajando.</td></tr>
+    <tr><td><b>Ticket</b></td><td class="m">Precio total de la venta.</td></tr>
+    <tr><td><b>Cash collected</b></td><td class="m">Plata que ya entró (cuotas cobradas + señas activadas).</td></tr>
+    <tr><td><b>Facturación</b></td><td class="m">Total vendido (suma de tickets), haya entrado o no.</td></tr>
+    <tr><td><b>Seña</b></td><td class="m">Reserva del cliente. No cuenta hasta la 1ª cuota.</td></tr>
+    <tr><td><b>Ganado</b></td><td class="m">Comisión que la persona ya se ganó (sobre lo cobrado).</td></tr>
+    <tr><td><b>Pendiente</b></td><td class="m">Comisión ganada que todavía no se pagó.</td></tr>
+    <tr><td><b>Canal</b></td><td class="m">Origen de la venta: Lanzamiento, Funnel o Referido.</td></tr>
+    <tr><td><b>Cotización</b></td><td class="m">Cuántos pesos equivalen a 1 USD.</td></tr>
+    <tr><td><b>Base comisionable</b></td><td class="m">Tope sobre el que se calculan las comisiones. El recargo/interés por encima de la base no comisiona.</td></tr>
+  </table></div>
+</div>`}
 
 /* ================= BOOT (al final: después de todas las declaraciones, para evitar TDZ) ================= */
 if(!SUPABASE_URL||!SUPABASE_ANON_KEY){renderConfigNeeded()}

@@ -1,0 +1,206 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>NAVE CRM · Guía de uso</title>
+<style>
+  :root{
+    --bg:#07080b;--bg-2:#0b0d12;--surface:#0f1219;--surface-2:#141824;--line:#20242f;--line-2:#2a2f3c;
+    --ink:#eef1f6;--muted:#8b93a3;--faint:#5c6472;--accent:#46cfe6;--accent-dim:#2b8fa1;--accent-glow:rgba(70,207,230,.14);
+    --setter:#46e0a0;--closer:#e0b24a;--cobros:#e879f9;--manager:#7c8cff;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}body{margin:0;background:radial-gradient(900px 460px at 82% -8%,var(--accent-glow),transparent 60%),var(--bg);
+    color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.55}
+  .wrap{max-width:920px;margin:0 auto;padding:30px 20px 80px}
+  header.top{display:flex;align-items:center;gap:14px;padding:14px 0 22px;border-bottom:1px solid var(--line);margin-bottom:26px}
+  header.top svg{width:34px;height:34px}
+  header.top b{font-size:20px;font-weight:800;letter-spacing:.02em;display:block}
+  header.top span{font-family:var(--mono);font-size:10px;letter-spacing:.26em;color:var(--muted);text-transform:uppercase}
+  h1{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:6px 0 8px}
+  .lead{color:var(--muted);font-size:15px;max-width:640px}
+  h2{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin:44px 0 14px;border-bottom:1px solid var(--line);padding-bottom:10px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin:14px 0}
+  .card h3{margin:0 0 4px;font-size:17px}
+  .role{border-left:3px solid var(--line-2)}
+  .role.setter{border-left-color:var(--setter)}.role.closer{border-left-color:var(--closer)}
+  .role.cobros{border-left-color:var(--cobros)}.role.manager{border-left-color:var(--manager)}
+  .tag{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:3px 9px;border-radius:20px;margin-bottom:8px}
+  .tag.setter{color:var(--setter);background:rgba(70,224,160,.12)}.tag.closer{color:var(--closer);background:rgba(224,178,74,.12)}
+  .tag.cobros{color:var(--cobros);background:rgba(232,121,249,.12)}.tag.manager{color:var(--manager);background:rgba(124,140,255,.12)}
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:14px 0 0}
+  ol.steps>li{position:relative;padding:0 0 16px 42px;margin:0}
+  ol.steps>li::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:-2px;width:28px;height:28px;border-radius:50%;
+    background:var(--surface-2);border:1px solid var(--line-2);color:var(--accent);font-weight:700;font-size:13px;display:grid;place-items:center;font-family:var(--mono)}
+  ol.steps>li:not(:last-child)::after{content:"";position:absolute;left:13.5px;top:28px;bottom:2px;width:1px;background:var(--line)}
+  ol.steps b{color:var(--ink)}
+  ol.steps .d{color:var(--muted);font-size:14px;margin-top:2px}
+  .chip{font-family:var(--mono);font-size:11px;background:var(--surface-2);border:1px solid var(--line-2);color:var(--ink);padding:2px 8px;border-radius:6px;white-space:nowrap}
+  .nav{color:var(--accent);font-weight:600}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:680px){.grid2{grid-template-columns:1fr}}
+  .mini{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .mini h4{margin:0 0 6px;font-size:14px}.mini p{margin:0;color:var(--muted);font-size:13.5px}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
+  td,th{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+  td b{color:var(--ink)}td .m{color:var(--muted)}
+  .flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0 2px}
+  .flow .st{background:var(--surface-2);border:1px solid var(--line-2);border-radius:8px;padding:6px 11px;font-size:13px}
+  .flow .ar{color:var(--faint)}
+  .note{background:linear-gradient(180deg,rgba(70,207,230,.06),transparent);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:12px;padding:13px 16px;color:var(--muted);font-size:14px;margin:14px 0}
+  .note b{color:var(--ink)}
+  footer{color:var(--faint);font-size:12px;text-align:center;margin-top:50px;border-top:1px solid var(--line);padding-top:20px}
+  .toc{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 0}
+  .toc a{font-size:13px;color:var(--muted);text-decoration:none;border:1px solid var(--line-2);border-radius:20px;padding:6px 13px}
+  .toc a:hover{color:var(--ink);border-color:var(--accent)}
+</style></head>
+<body><div class="wrap">
+
+  <header class="top">
+    <svg viewBox="0 0 48 48" fill="none"><g fill="#eef1f6"><path d="M20.4 8.6 L32.6 20.4 Q27.4 20 25.7 22.2 Q24.4 23.9 24 26.6 Q23.1 22.6 20.4 21.4 Q17.7 20.2 14 20.8 Z"/><path d="M24 26.4 C31.6 33.4 29.4 42.2 14.6 43.4 C23.8 40 25.2 31.6 21.8 27.6 Z"/></g></svg>
+    <div><b>NAVE</b><span>Instituto · CRM</span></div>
+  </header>
+
+  <h1>Guía de uso del tracker 🚀</h1>
+  <p class="lead">Cómo usar el CRM paso a paso, según tu rol. Si es tu primera vez, empezá por <b style="color:var(--ink)">Arrancar</b> y después andá a la sección de tu rol.</p>
+  <div class="toc">
+    <a href="#arrancar">1 · Arrancar</a>
+    <a href="#setter">Setter</a>
+    <a href="#closer">Closer</a>
+    <a href="#cobros">Cobros / Ventas</a>
+    <a href="#manager">Manager</a>
+    <a href="#flujos">Flujos rápidos</a>
+    <a href="#glosario">Glosario</a>
+  </div>
+
+  <!-- ARRANCAR -->
+  <h2 id="arrancar">1 · Arrancar (todos)</h2>
+  <div class="card">
+    <ol class="steps">
+      <li><b>Entrá al link del CRM</b> que te pasó tu equipo y creá tu cuenta con tu email.<div class="d">La primera vez: "Crear una" → email + contraseña + tu nombre.</div></li>
+      <li><b>Avisá al manager</b> que ya te registraste.<div class="d">El manager te asigna tu <b>rol</b> (setter / closer) para que veas lo que corresponde.</div></li>
+      <li><b>Menú lateral izquierdo</b> = todas las secciones. <b>Arriba a la derecha</b> de cada pantalla están los botones de acción (ej: <span class="chip">+ Nuevo lead</span>).</li>
+    </ol>
+    <div class="note">Regla de oro: <b>cada cosa que hacés, cargala en el momento</b> (un lead nuevo, una llamada, una venta, un cobro). El CRM sirve solo si los datos están al día.</div>
+  </div>
+
+  <!-- SETTER -->
+  <h2 id="setter">Rol Setter</h2>
+  <div class="card role setter">
+    <span class="tag setter">Setter</span>
+    <h3>Tu día en el CRM</h3>
+    <p class="lead" style="margin-bottom:4px">Tu trabajo: cargar leads, contactarlos, hacerlos avanzar y agendar la llamada con el closer.</p>
+    <ol class="steps">
+      <li><b>Panel general</b> → mirá "Seguimientos de hoy": tu cola priorizada del día.</li>
+      <li><b>Leads → + Nuevo lead</b> (o <b>Importar CSV</b>) para cargar a quién estás hablando.<div class="d">Completá nombre, contacto (@ o WhatsApp), fuente (de dónde vino) y temperatura.</div></li>
+      <li>A medida que avanzás, <b>cambiá el Estado</b> del lead abriéndolo desde la tabla.<div class="d">Nuevo → Contactado → Confirmó clase → Asistió → <b>Agendó</b>.</div></li>
+      <li><b>Cargá un próximo seguimiento</b> dentro del lead (fecha + nota) para no perder el hilo.</li>
+      <li><b>KPIs diarios</b> → cargá tus números del día (chats, conversaciones, VSL, agendas…). Se puede actualizar varias veces por día.</li>
+    </ol>
+    <div class="flow"><span class="st">Nuevo</span><span class="ar">→</span><span class="st">Contactado</span><span class="ar">→</span><span class="st">Confirmó clase</span><span class="ar">→</span><span class="st">Asistió</span><span class="ar">→</span><span class="st">Agendó</span></div>
+  </div>
+
+  <!-- CLOSER -->
+  <h2 id="closer">Rol Closer</h2>
+  <div class="card role closer">
+    <span class="tag closer">Closer</span>
+    <h3>Tu día en el CRM</h3>
+    <p class="lead" style="margin-bottom:4px">Tu trabajo: preparar la llamada, tomarla y cargar el resultado (y la venta si cerró).</p>
+    <ol class="steps">
+      <li><b>Triage</b> → mirá los leads que agendaron y hay que calificar antes de la call.</li>
+      <li>Después de la llamada: <b>Reporte de llamadas</b> → elegí el lead, marcá si se presentó y el <b>Resultado</b> (Cerró / Seguimiento / No cierre).</li>
+      <li>Completá <b>situación, dolores, razones de compra, objeciones y frases clave</b>. Esto es oro para todo el equipo.</li>
+      <li><b>Si cerró:</b> completá el bloque <b>Venta</b> (ticket, dinero que pagó, cuotas, comprobante, setter y closer). <span class="chip">Ver "Cargar una venta" abajo</span></li>
+      <li>Si no cerró, cargá <b>motivo</b> y <b>próximo seguimiento</b>.</li>
+    </ol>
+    <div class="note">El <b>closer</b> y el <b>setter</b> que elijas en la venta definen a quién le corresponde la <b>comisión</b>. El closer viene pre-seleccionado con vos; el setter con el asesor del lead.</div>
+  </div>
+
+  <!-- COBROS -->
+  <h2 id="cobros">Ventas, Señas y Cobros</h2>
+  <div class="card role cobros">
+    <span class="tag cobros">Ventas / Cobros</span>
+    <h3>Cargar plata y hacerle seguimiento</h3>
+    <ol class="steps">
+      <li><b>Ventas → + Cargar venta</b>: para cargar una venta directa (sin pasar por el reporte).<div class="d">Elegí el <b>Canal</b>: Lanzamiento, Funnel o Referido. Así no se mezclan.</div></li>
+      <li><b>Señas → + Registrar seña</b>: cuando alguien deja una reserva (ej: 100 USD).<div class="d">La seña <b>no cuenta</b> como cobrado ni comisión hasta que la venta pague su 1ª cuota.</div></li>
+      <li><b>Cobros → Cuotas</b>: cuando entra una cuota, tocá <b>"Marcar cobrada"</b>. Ahí recién suma al cash collected.</li>
+      <li><b>Facturación</b>: ves facturación y cash por moneda (ARS / USD), el total unificado y el <b>cash por billetera</b>.</li>
+    </ol>
+  </div>
+
+  <!-- MANAGER -->
+  <h2 id="manager">Rol Manager</h2>
+  <div class="card role manager">
+    <span class="tag manager">Manager</span>
+    <h3>Configurar y controlar</h3>
+    <ol class="steps">
+      <li><b>Comisiones → Lanzamientos</b>: numerá el lanzamiento actual (ej: N° 7) o creá uno nuevo (queda activo).</li>
+      <li><b>Comisiones → Equipo · roles y comisiones</b>: asigná el <b>rol</b> de cada persona y su <b>% como setter</b> y <b>% como closer</b>.<div class="d">Importante: si el % está en 0, esa persona no genera comisión.</div></li>
+      <li><b>Comisiones → A pagar por origen</b>: cuánto se debe pagar en comisiones por cada lanzamiento / funnel / referidos.</li>
+      <li>Entrá al <b>detalle de cada persona</b> (tocá su nombre) para ver sus ventas y marcar comisiones como <b>pagadas</b>.</li>
+      <li>El manager <b>ve todo</b>; setters y closers ven lo suyo.</li>
+    </ol>
+  </div>
+
+  <!-- FLUJOS -->
+  <h2 id="flujos">Flujos rápidos (paso a paso)</h2>
+
+  <div class="card">
+    <h3>💵 Cargar una venta</h3>
+    <ol class="steps">
+      <li><b>Ventas → + Cargar venta</b> (o desde el Reporte si cerraste la call).</li>
+      <li>Elegí <b>Lead</b> (o nombre manual) y el <b>Canal</b> (Lanzamiento / Funnel / Referido).</li>
+      <li>Elegí <b>Setter</b> y <b>Closer</b> (para las comisiones).</li>
+      <li><b>Forma de pago</b>: Un pago / 2 cuotas / 3 cuotas.</li>
+      <li>Cargá <b>Ticket</b> (total), <b>Dinero que pagó</b> y, si hay cuotas, el monto y vencimiento de cada una.</li>
+      <li><b>Base comisionable:</b> si cobrás recargo/interés, poné el precio base (ej: 500). Setter y closer comisionan hasta ese monto; el recargo no comisiona. Dejalo vacío si no hay recargo.</li>
+      <li>Si la moneda no es USD, cargá la <b>cotización</b> (1 USD = ? ARS).</li>
+      <li>Adjuntá el <b>comprobante</b> y guardá. ✅</li>
+    </ol>
+  </div>
+
+  <div class="grid2">
+    <div class="card" style="margin:0">
+      <h3>🧾 Seña que se convierte en venta</h3>
+      <ol class="steps">
+        <li><b>Señas → + Registrar seña</b> (monto + comprobante + setter/closer).</li>
+        <li>Cuando el cliente arranca, <b>cargás la venta</b> y en "Seña a aplicar" elegís esa seña.</li>
+        <li>Al cobrar la <b>1ª cuota</b>, la seña se suma al cash collected.</li>
+      </ol>
+    </div>
+    <div class="card" style="margin:0">
+      <h3>✅ Marcar comisión pagada</h3>
+      <ol class="steps">
+        <li><b>Comisiones</b> → tocá el <b>nombre</b> de la persona.</li>
+        <li>Se abre el detalle por venta con Ganado / Pagado / Pendiente.</li>
+        <li>Tocá <b>"pagar"</b> en la cuota/venta cuando le transferiste. Se actualiza el pendiente.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>✏️ Corregir algo cargado mal</h3>
+    <div class="flow"><span class="st">Ventas / Señas</span><span class="ar">→</span><span class="st">clic en la fila</span><span class="ar">→</span><span class="st">editar o eliminar</span></div>
+    <p class="lead" style="margin-top:8px">Podés cambiar montos, moneda, cuotas, reemplazar el comprobante o eliminar. <b style="color:var(--ink)">Ojo:</b> editar una venta regenera sus cuotas.</p>
+  </div>
+
+  <!-- GLOSARIO -->
+  <h2 id="glosario">Glosario</h2>
+  <div class="card">
+    <table>
+      <tr><th>Término</th><th>Qué significa</th></tr>
+      <tr><td><b>Lead</b></td><td class="m">Una persona interesada que estás trabajando.</td></tr>
+      <tr><td><b>Temperatura</b></td><td class="m">Qué tan caliente está el lead: fluido / potencial / leve.</td></tr>
+      <tr><td><b>Ticket</b></td><td class="m">El precio total de la venta.</td></tr>
+      <tr><td><b>Cash collected</b></td><td class="m">La plata que <b>ya entró</b> (cuotas cobradas + señas activadas).</td></tr>
+      <tr><td><b>Facturación</b></td><td class="m">Total vendido (suma de los tickets), haya entrado o no.</td></tr>
+      <tr><td><b>Seña</b></td><td class="m">Reserva que deja el cliente. No cuenta hasta que paga la 1ª cuota.</td></tr>
+      <tr><td><b>Ganado</b></td><td class="m">La comisión que la persona ya se ganó (sobre lo cobrado).</td></tr>
+      <tr><td><b>Pendiente</b></td><td class="m">Comisión ganada que todavía no se le pagó.</td></tr>
+      <tr><td><b>Canal</b></td><td class="m">De dónde viene la venta: Lanzamiento, Funnel o Referido.</td></tr>
+      <tr><td><b>Cotización</b></td><td class="m">Cuántos pesos equivalen a 1 USD, para convertir a dólares.</td></tr>
+      <tr><td><b>Base comisionable</b></td><td class="m">Tope sobre el que se calculan las comisiones. El recargo/interés por encima de la base no comisiona.</td></tr>
+      <tr><td><b>Comprobante</b></td><td class="m">La captura/PDF del pago que se adjunta a la venta o cuota.</td></tr>
+    </table>
+  </div>
+
+  <footer>NAVE CRM · Guía de uso — si algo no te cierra, preguntale a tu manager 🛰️</footer>
+</div></body></html>
