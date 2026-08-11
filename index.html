@@ -601,19 +601,21 @@ async function renderFacturacion(){
   let vq=sb.from('ventas').select('id,moneda,ticket,cotizacion');if(facLanzFilter!=='all')vq=vq.eq('lanzamiento_id',facLanzFilter)
   const{data:ventas,error}=await vq
   if(error){document.getElementById('facBody').innerHTML=`<div class="empty" style="padding:24px">Error: ${esc(error.message)}</div>`;return}
-  let cq=sb.from('cuotas').select('monto,monto_usd,estado,moneda,venta_id,ventas!inner(lanzamiento_id)');if(facLanzFilter!=='all')cq=cq.eq('ventas.lanzamiento_id',facLanzFilter)
+  let cq=sb.from('cuotas').select('monto,monto_usd,estado,moneda,billetera,venta_id,ventas!inner(lanzamiento_id)');if(facLanzFilter!=='all')cq=cq.eq('ventas.lanzamiento_id',facLanzFilter)
   const{data:cuotas}=await cq
-  let sq=sb.from('senas').select('monto,monto_usd,moneda,venta_id,ventas!inner(lanzamiento_id)').eq('estado','aplicada');if(facLanzFilter!=='all')sq=sq.eq('ventas.lanzamiento_id',facLanzFilter)
+  let sq=sb.from('senas').select('monto,monto_usd,moneda,billetera,venta_id,ventas!inner(lanzamiento_id)').eq('estado','aplicada');if(facLanzFilter!=='all')sq=sq.eq('ventas.lanzamiento_id',facLanzFilter)
   const{data:senas}=await sq
   // acumular por moneda
   const M={} // moneda -> {fact,factUsd,cash,cashUsd,pend,pendUsd}
   const slot=m=>M[m]=M[m]||{fact:0,factUsd:0,cash:0,cashUsd:0,pend:0,pendUsd:0}
+  const W={} // billetera -> cash USD
+  const addW=(b,u)=>{const k=(b&&b.trim())||'(sin especificar)';W[k]=(W[k]||0)+Number(u||0)}
   ;(ventas||[]).forEach(v=>{const m=v.moneda||'USD',a=slot(m);a.fact+=Number(v.ticket||0);a.factUsd+=Number(v.ticket||0)/(Number(v.cotizacion)||1)})
   const ventasConCobro=new Set()
   ;(cuotas||[]).forEach(c=>{const m=c.moneda||'USD',a=slot(m)
-    if(c.estado==='cobrado'){if(c.venta_id)ventasConCobro.add(c.venta_id);a.cash+=Number(c.monto||0);a.cashUsd+=Number(c.monto_usd||0)}
+    if(c.estado==='cobrado'){if(c.venta_id)ventasConCobro.add(c.venta_id);a.cash+=Number(c.monto||0);a.cashUsd+=Number(c.monto_usd||0);addW(c.billetera,c.monto_usd)}
     else{a.pend+=Number(c.monto||0);a.pendUsd+=Number(c.monto_usd||0)}})
-  ;(senas||[]).forEach(s=>{if(!s.venta_id||!ventasConCobro.has(s.venta_id))return;const m=s.moneda||'USD',a=slot(m);a.cash+=Number(s.monto||0);a.cashUsd+=Number(s.monto_usd||0)})
+  ;(senas||[]).forEach(s=>{if(!s.venta_id||!ventasConCobro.has(s.venta_id))return;const m=s.moneda||'USD',a=slot(m);a.cash+=Number(s.monto||0);a.cashUsd+=Number(s.monto_usd||0);addW(s.billetera,s.monto_usd)})
   // totales unificados USD
   const T=Object.values(M).reduce((t,a)=>({factUsd:t.factUsd+a.factUsd,cashUsd:t.cashUsd+a.cashUsd,pendUsd:t.pendUsd+a.pendUsd}),{factUsd:0,cashUsd:0,pendUsd:0})
   document.getElementById('fk').innerHTML=[['Facturación (USD)',money(T.factUsd)],['Cash collected (USD)',money(T.cashUsd)],['Por cobrar (USD)',money(T.pendUsd)]].map(([l,n])=>`<div class="fcell"><div class="n" style="font-size:24px">${n}</div><div class="l">${l}</div></div>`).join('')
@@ -627,7 +629,9 @@ async function renderFacturacion(){
     <div class="listrow"><span style="flex:1" class="sub2">Facturación</span><span class="nm">${money(T.factUsd)}</span></div>
     <div class="listrow"><span style="flex:1" class="sub2">Cash collected</span><span class="nm">${money(T.cashUsd)}</span></div>
     <div class="listrow"><span style="flex:1" class="sub2">Por cobrar</span><span class="nm">${money(T.pendUsd)}</span></div></div>`
-  document.getElementById('facBody').innerHTML=cards+total}
+  const wl=Object.keys(W).sort((a,b)=>W[b]-W[a])
+  const wallets=`<div class="card" style="margin:0 30px 24px"><h3>Cash por billetera</h3><p class="cdesc">Cash collected por medio de cobro (incluye señas activadas), en USD.</p>${wl.length?wl.map(w=>`<div class="listrow"><span style="flex:1" class="sub2">${esc(w)}</span><span class="nm">${money(W[w])}</span></div>`).join(''):'<div class="empty" style="padding:12px">Sin cobros todavía.</div>'}</div>`
+  document.getElementById('facBody').innerHTML=cards+total+wallets}
 
 /* ================= COMISIONES ================= */
 let comLanzFilter=null,COM_LINES=[],COM_PAID=new Set(),facLanzFilter=null
