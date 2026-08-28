@@ -181,7 +181,7 @@ async function ensureClases(){if(!state.lanz)return
 // null = todos los roles. [] = solo manager/admin.
 const NAV=[
   {g:null,items:[['#/panel','Panel general',null],['#/calendario','Calendario',null],['#/strikes','Strikes',null],['#/guia','Guía',null]]},
-  {g:'Setter',items:[['#/leads','Leads',['setter']],['#/nuevo','Nuevo lead',['setter']],['#/importar','Cargar agenda',['setter','closer']],['#/kpis','KPIs diarios',['setter']]]},
+  {g:'Setter',items:[['#/leads','Leads',['setter']],['#/nuevo','Nuevo lead',['setter']],['#/importar','Cargar agenda',['setter','closer']],['#/misagendas','Mis agendas',['setter']],['#/kpis','KPIs diarios',['setter']]]},
   {g:'Closer',items:[['#/triage','Triage',['closer']],['#/reporte','Reporte de llamadas',['closer']],['#/grilla','Grilla de reportes',['closer','setter']]]},
   {g:'Ventas',items:[['#/ventas','Ventas',null],['#/senas','Señas',null]]},
   {g:'Marketing',items:[['#/marketing','Rendimiento de contenido',[]]]},
@@ -198,7 +198,7 @@ function renderShell(){
   document.getElementById('so').onclick=()=>sb.auth.signOut();window.onhashchange=route}
 function setActive(){root.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('on',a.dataset.h===location.hash))}
 function route(){setActive();const h=location.hash
-  const map={'#/panel':renderPanel,'#/calendario':renderCalendario,'#/guia':renderGuia,'#/strikes':renderStrikes,'#/leads':renderLeads,'#/nuevo':()=>openLeadModal(),'#/importar':renderImport,'#/kpis':renderKpis,'#/triage':renderTriage,'#/reporte':renderReporte,'#/grilla':renderGrilla,'#/ventas':renderVentas,'#/senas':renderSenas,'#/comisiones':renderComisiones,'#/facturacion':renderFacturacion,'#/marketing':renderMarketing,'#/cobros':renderCobros}
+  const map={'#/panel':renderPanel,'#/calendario':renderCalendario,'#/guia':renderGuia,'#/strikes':renderStrikes,'#/leads':renderLeads,'#/nuevo':()=>openLeadModal(),'#/importar':renderImport,'#/misagendas':renderMisAgendas,'#/kpis':renderKpis,'#/triage':renderTriage,'#/reporte':renderReporte,'#/grilla':renderGrilla,'#/ventas':renderVentas,'#/senas':renderSenas,'#/comisiones':renderComisiones,'#/facturacion':renderFacturacion,'#/marketing':renderMarketing,'#/cobros':renderCobros}
   ;(map[h]||renderPanel)()}
 function head(sub,title,actions=''){return `<div class="top"><div><div class="sub">${sub}</div><h1>${title}</h1></div><div class="grow"></div>${actions}</div>`}
 
@@ -320,7 +320,11 @@ async function openLeadModal(lead){
     if(state.clases.length&&leadId){for(const b of ov.querySelectorAll('[data-cl]')){await sb.from('asistencias').upsert({lead_id:leadId,clase_id:b.dataset.cl,asistio:b.classList.contains('yes')},{onConflict:'lead_id,clase_id'})}}
     // seguimiento
     if(g('m_segf').value&&leadId){await sb.from('seguimientos').insert({lead_id:leadId,asesor_id:p.asesor_id||me.id,fecha_programada:g('m_segf').value,tipo:'seguimiento',nota:g('m_segn').value.trim()})}
-    toast('Guardado ✓');ov.remove();if(location.hash==='#/leads'){loadLeads();loadFunnel()}else location.hash='#/leads'}
+    toast('Guardado ✓');ov.remove()
+    if(location.hash==='#/leads'){loadLeads();loadFunnel()}
+    else if(location.hash==='#/misagendas')renderMisAgendas()
+    else if(location.hash==='#/triage')renderTriage()
+    else location.hash='#/leads'}
   if(lead)g('m_del').onclick=async()=>{if(confirm('¿Eliminar este lead?')){await sb.from('leads').delete().eq('id',lead.id);toast('Eliminado');ov.remove();if(location.hash==='#/leads'){loadLeads();loadFunnel()}}}}
 
 /* ================= IMPORT ================= */
@@ -380,6 +384,18 @@ async function loadKhist(){const el=document.getElementById('khist');if(!el)retu
   let q=sb.from('kpis_diarios').select('*').order('fecha',{ascending:false}).limit(60);if(!isMgr())q=q.eq('setter_id',me.id)
   const{data}=await q;el.innerHTML=(data&&data.length)?data.map(k=>`<tr><td class="nm">${esc(k.fecha)}</td><td>${esc(nameOf(k.setter_id)||'—')}</td><td>${k.leads_asignados||0}</td><td>${k.leads_contactados||0}</td><td>${k.leads_sin_responder||0}</td><td>${k.leves||0}</td><td>${k.fluidos||0}</td><td>${k.potenciales||0}</td><td>${k.agendas_dia||0}</td><td class="sub2">${fmtDateTime(k.created_at)}</td>${isMgr()?`<td><button class="pg" data-kdel="${k.id}">Borrar</button></td>`:''}</tr>`).join(''):`<tr><td colspan="${isMgr()?11:10}" class="empty">Sin registros todavía.</td></tr>`
   if(isMgr())document.querySelectorAll('[data-kdel]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Borrar este registro de KPIs?'))return;const r=await delRow('kpis_diarios',b.dataset.kdel);if(!r.ok){toast(r.msg);return};toast('Borrado ✓');loadKhist()})}
+
+/* ================= MIS AGENDAS (setter) ================= */
+async function renderMisAgendas(){view().innerHTML=head('SETTER','Mis agendas')+`<div class="card"><h3>Agendas asignadas a vos</h3><p class="cdesc">Incluye las que vos cargaste y las que un closer cargó y te asignó porque el lead se agendó solo. Entrá y completá "Contexto para el closer" en las que todavía no lo tengan.</p><div id="ma"></div></div>`
+  const{data}=await sb.from('leads').select('*').eq('asesor_id',me.id).in('estado',['Agendó','Confirmó clase']).order('updated_at',{ascending:false}).limit(200)
+  const rows=data||[]
+  const ids=rows.map(l=>l.id)
+  let fechaByLead={}
+  if(ids.length){const{data:segs}=await sb.from('seguimientos').select('lead_id,fecha_programada').eq('tipo','agenda').in('lead_id',ids)
+    ;(segs||[]).forEach(s=>{if(!fechaByLead[s.lead_id]||s.fecha_programada>fechaByLead[s.lead_id])fechaByLead[s.lead_id]=s.fecha_programada})}
+  document.getElementById('ma').innerHTML=rows.length?rows.map(l=>{const tieneContexto=!!(l.situacion||l.objetivos||l.dolor)
+    return `<div class="listrow"><div style="flex:1"><div class="nm">${esc(l.nombre)}</div><div class="sub2">${esc(l.telefono||l.contacto||'sin teléfono')} · agenda: ${esc(fechaByLead[l.id]||'—')}</div></div><span class="chip ${tieneContexto?'cobrado':'pendiente'}">${tieneContexto?'con contexto':'sin contexto'}</span><span class="chip ${l.temperatura}">${esc(l.temperatura)}</span><button class="pg" data-ma="${l.id}">Abrir</button></div>`}).join(''):`<div class="empty" style="padding:24px">No tenés agendas asignadas por ahora 🎉</div>`
+  document.querySelectorAll('[data-ma]').forEach(b=>b.onclick=async()=>{const{data:l}=await sb.from('leads').select('*').eq('id',b.dataset.ma).single();openLeadModal(l)})}
 
 /* ================= TRIAGE ================= */
 async function renderTriage(){view().innerHTML=head('CLOSER','Triage')+`<div class="card"><h3>Agendas para triage</h3><p class="cdesc">Leads que agendaron y hay que calificar/preparar antes de la call.</p><div id="tr"></div></div>`
