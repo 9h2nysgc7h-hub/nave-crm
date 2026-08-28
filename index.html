@@ -164,15 +164,19 @@ async function ensureClases(){if(!state.lanz)return
   state.clases=data||[]}
 
 /* ---------- SHELL + ROUTER ---------- */
+// Tercer elemento de cada item = roles (aparte de manager/admin, que siempre ven todo) que lo ven.
+// null = todos los roles. [] = solo manager/admin.
 const NAV=[
-  {g:null,items:[['#/panel','Panel general'],['#/calendario','Calendario'],['#/guia','Guía']]},
-  {g:'Setter',items:[['#/leads','Leads'],['#/nuevo','Nuevo lead'],['#/importar','Cargar agenda'],['#/kpis','KPIs diarios']]},
-  {g:'Closer',items:[['#/triage','Triage'],['#/reporte','Reporte de llamadas'],['#/grilla','Grilla de reportes']]},
-  {g:'Ventas',items:[['#/ventas','Ventas'],['#/senas','Señas']]},
-  {g:'Marketing',items:[['#/marketing','Rendimiento de contenido']]},
-  {g:'Cobros',items:[['#/cobros','Cuotas y seguimientos'],['#/facturacion','Facturación'],['#/comisiones','Comisiones']]}]
+  {g:null,items:[['#/panel','Panel general',null],['#/calendario','Calendario',null],['#/guia','Guía',null]]},
+  {g:'Setter',items:[['#/leads','Leads',['setter']],['#/nuevo','Nuevo lead',['setter']],['#/importar','Cargar agenda',['setter']],['#/kpis','KPIs diarios',['setter']]]},
+  {g:'Closer',items:[['#/triage','Triage',['closer']],['#/reporte','Reporte de llamadas',['closer']],['#/grilla','Grilla de reportes',['closer','setter']]]},
+  {g:'Ventas',items:[['#/ventas','Ventas',null],['#/senas','Señas',null]]},
+  {g:'Marketing',items:[['#/marketing','Rendimiento de contenido',[]]]},
+  {g:'Cobros',items:[['#/cobros','Cuotas y seguimientos',null],['#/facturacion','Facturación',null],['#/comisiones','Comisiones',null]]}]
 function renderShell(){
-  const nav=NAV.map(s=>`${s.g?`<div class="grp">${s.g}</div>`:''}${s.items.map(([h,l])=>`<a data-h="${h}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/></svg><span>${l}</span></a>`).join('')}`).join('')
+  const canSee=roles=>isMgr()||!roles||roles.includes(myProfile.rol)
+  const nav=NAV.map(s=>{const items=s.items.filter(([,,roles])=>canSee(roles));if(!items.length)return ''
+    return `${s.g?`<div class="grp">${s.g}</div>`:''}${items.map(([h,l])=>`<a data-h="${h}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/></svg><span>${l}</span></a>`).join('')}`}).join('')
   root.innerHTML=`<div id="app"><aside class="side"><div class="brand">${ROCKET}<div class="wm"><b>NAVE</b><span>Instituto · CRM</span></div></div>
     <nav class="nav">${nav}</nav>
     <div class="me"><div class="av">${initials(myProfile.nombre)}</div><div><div class="nm">${esc(myProfile.nombre||me.email)}</div><div class="rl">${esc(myProfile.rol)}</div></div><button class="out" id="so" title="Salir">⎋</button></div>
@@ -396,7 +400,7 @@ async function saveReporte(){const g=id=>document.getElementById(id)
 
 /* ================= GRILLA DE REPORTES ================= */
 async function renderGrilla(){view().innerHTML=head('CLOSER','Grilla de reportes')+`<div class="tablewrap"><table><thead><tr><th>Lead</th><th>Fecha</th><th>Closer</th><th>Asistencia</th><th>Resultado</th><th>Programa</th><th>Facturado</th></tr></thead><tbody id="grows"><tr><td colspan="7" class="empty">Cargando…</td></tr></tbody></table></div>`
-  let q=sb.from('reportes_llamada').select('*,leads(nombre)').order('fecha',{ascending:false}).limit(200);if(!isMgr())q=q.eq('closer_id',me.id)
+  let q=sb.from('reportes_llamada').select('*,leads(nombre)').order('fecha',{ascending:false}).limit(200);if(myProfile.rol==='closer')q=q.eq('closer_id',me.id)
   const{data}=await q;document.getElementById('grows').innerHTML=(data&&data.length)?data.map(r=>`<tr class="clk" data-id="${r.id}"><td class="nm">${esc(r.leads?r.leads.nombre:'—')}</td><td class="sub2">${fmtDate(r.fecha)}</td><td>${esc((nameOf(r.closer_id)||'').split(' ')[0]||'—')}</td><td>${esc(r.asistio||'—')}</td><td>${esc(r.resultado||'—')}</td><td>${esc(r.programa||'—')}</td><td class="nm">${r.monto_facturado?fmtCur(r.monto_facturado,r.moneda):'—'}</td></tr>`).join(''):`<tr><td colspan="7" class="empty">Sin reportes todavía.</td></tr>`
   document.querySelectorAll('#grows tr[data-id]').forEach(tr=>tr.onclick=()=>{const r=data.find(x=>x.id===tr.dataset.id);openReporteDetail(r)})}
 function openReporteDetail(r){const ov=document.createElement('div');ov.className='overlay';const mgr=isMgr()
