@@ -59,6 +59,15 @@
   .chip.fluido{color:var(--fluido);background:rgba(70,224,160,.12)}.chip.potencial{color:var(--potencial);background:rgba(224,178,74,.12)}.chip.leve{color:var(--leve);background:rgba(124,134,152,.14)}
   .chip.pendiente{color:var(--warn);background:rgba(224,178,74,.12)}.chip.cobrado{color:var(--good);background:rgba(70,224,160,.12)}.chip.vencido{color:var(--danger);background:rgba(240,101,79,.12)}
   .chip.advertencia{color:var(--warn);background:rgba(224,178,74,.12)}.chip.strike{color:var(--danger);background:rgba(240,101,79,.12)}.chip.vetado{color:#fff;background:var(--danger)}
+  .faltas{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px}
+  @media (max-width:760px){.faltas{grid-template-columns:1fr}}
+  .falta-card{background:var(--surface-2);border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:8px;padding:18px 20px}
+  .falta-card.grave{border-left-color:var(--danger)}
+  .falta-tag{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;border-radius:20px;margin-bottom:12px;background:rgba(224,178,74,.12);color:var(--warn)}
+  .falta-card.grave .falta-tag{background:rgba(240,101,79,.12);color:var(--danger)}
+  .falta-card h4{margin:0 0 10px;font-size:13.5px;color:var(--ink)}
+  .falta-card ul{margin:0;padding-left:18px;color:var(--muted);font-size:13.5px}
+  .falta-card ul li{margin-bottom:8px}
   .estado{display:inline-flex;align-items:center;gap:7px;color:var(--ink);font-size:12.5px}.dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}
   .who{display:inline-flex;align-items:center;gap:7px}.who .a{width:22px;height:22px;border-radius:50%;background:#222838;display:grid;place-items:center;font-size:10px;color:var(--ink);font-weight:700}
   .foot{display:flex;align-items:center;gap:12px;padding:12px 16px;border-top:1px solid var(--line);color:var(--faint);font-family:var(--mono);font-size:11px}
@@ -922,8 +931,33 @@ async function renderStrikes(){const canLog=isMgr()||myProfile.rol==='director'
         <tr><td class="nm">6</td><td><span class="chip strike">−15% comisión</span></td></tr>
         <tr><td class="nm">9</td><td><span class="chip vetado">Vetado del equipo</span></td></tr>
       </tbody></table></div>
-      <p class="cdesc" style="margin-top:12px"><b>Faltas leves</b> (ejemplos): no cargar el reporte de la llamada el mismo día, no completar los KPIs diarios, llegar tarde a una call, no presentarse a la daily, no cargar la agenda en el día, cargar una venta sin comprobante, cargar mal una seña.</p>
-      <p class="cdesc"><b>Faltas graves</b> (ejemplos): no presentarse a una call sin avisar, datos falsos en un reporte o ticket, maltratar a un lead, ocultar un comprobante real, cobrarle mal a un lead (monto o medio de pago), no aplicar las estrategias del lanzamiento bajadas por los directores.</p>
+      <div class="faltas">
+        <div class="falta-card">
+          <span class="falta-tag">⚠ Advertencia · falta leve</span>
+          <h4>Ejemplos</h4>
+          <ul>
+            <li>No cargar el reporte de la llamada el mismo día.</li>
+            <li>No completar los KPIs diarios, o cargarlos incompletos.</li>
+            <li>Llegar tarde a una call agendada sin avisar antes.</li>
+            <li>No presentarse a las reuniones dailys.</li>
+            <li>No cargar las agendas en el día.</li>
+            <li>Cargar una venta sin subir el comprobante.</li>
+            <li>Cargar mal una seña (monto, moneda o venta asociada equivocada).</li>
+          </ul>
+        </div>
+        <div class="falta-card grave">
+          <span class="falta-tag">✕ Strike · falta grave</span>
+          <h4>Ejemplos</h4>
+          <ul>
+            <li>No presentarse a una call agendada sin avisar (no-show propio).</li>
+            <li>Cargar un reporte o un ticket con datos falsos o inflados.</li>
+            <li>Maltratar a un lead o faltar el respeto en una llamada.</li>
+            <li>Ocultar o demorar a propósito un comprobante de pago real.</li>
+            <li>Cobrarle mal a un lead, ya sea el monto o el medio de pago.</li>
+            <li>No aplicar las estrategias del lanzamiento bajadas por los directores.</li>
+          </ul>
+        </div>
+      </div>
     </div>
     ${canLog?`<div class="card"><h3>Registrar sanción</h3>
       <div class="row3">
