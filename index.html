@@ -156,7 +156,7 @@ async function ensureClases(){if(!state.lanz)return
 /* ---------- SHELL + ROUTER ---------- */
 const NAV=[
   {g:null,items:[['#/panel','Panel general'],['#/calendario','Calendario'],['#/guia','Guía']]},
-  {g:'Setter',items:[['#/leads','Leads'],['#/nuevo','Nuevo lead'],['#/importar','Importar / agendar'],['#/kpis','KPIs diarios']]},
+  {g:'Setter',items:[['#/leads','Leads'],['#/nuevo','Nuevo lead'],['#/importar','Cargar agenda'],['#/kpis','KPIs diarios']]},
   {g:'Closer',items:[['#/triage','Triage'],['#/reporte','Reporte de llamadas'],['#/grilla','Grilla de reportes']]},
   {g:'Ventas',items:[['#/ventas','Ventas'],['#/senas','Señas']]},
   {g:'Marketing',items:[['#/marketing','Rendimiento de contenido']]},
@@ -219,7 +219,7 @@ async function cobrosResumen(){const today=new Date().toISOString().slice(0,10)
 /* ================= LEADS ================= */
 async function renderLeads(){const v=view()
   v.innerHTML=head('SETTER · '+esc((state.lanz&&state.lanz.nombre)||'LANZAMIENTO'),'Leads',
-    `<button class="btn ghost" id="b_imp">⤓ Importar CSV</button>${isMgr()?'<button class="btn ghost" id="b_auto">Auto-repartir</button>':''}<button class="btn primary" id="b_new">+ Nuevo lead</button>`)
+    `<button class="btn ghost" id="b_imp">📅 Cargar agenda</button>${isMgr()?'<button class="btn ghost" id="b_auto">Auto-repartir</button>':''}<button class="btn primary" id="b_new">+ Nuevo lead</button>`)
     +`<div class="funnel" id="funnel"></div>
     <div class="tb"><input class="inp search" id="f_q" placeholder="Buscar nombre, @ o WhatsApp…" value="${esc(state.q)}"/>
       <span class="pill ${!state.mine?'on':''}" data-mine="0">Todos</span><span class="pill ${state.mine?'on':''}" data-mine="1">Mis leads</span>
@@ -249,13 +249,17 @@ async function loadLeads(){const rows=document.getElementById('rows');if(!rows)r
   if(pv)pv.onclick=()=>{if(state.page>0){state.page--;loadLeads()}};if(nx)nx.onclick=()=>{if(state.page<pages-1){state.page++;loadLeads()}}}
 async function openLeadModal(lead){
   let asist={};if(lead){const{data}=await sb.from('asistencias').select('*').eq('lead_id',lead.id);(data||[]).forEach(a=>asist[a.clase_id]=a.asistio)}
-  const l=lead||{nombre:'',contacto:'',fuente:'Instagram',temperatura:'potencial',estado:'Nuevo',tema:'',dolor:'',notas:'',asesor_id:me.id}
+  const l=lead||{nombre:'',contacto:'',email:'',telefono:'',fuente:'Instagram',temperatura:'potencial',estado:'Nuevo',tema:'',situacion:'',objetivos:'',dolor:'',notas:'',asesor_id:me.id}
   const ov=document.createElement('div');ov.className='overlay'
   ov.innerHTML=`<div class="modal"><h2>${lead?'Editar lead':'Nuevo lead'}</h2>
     <div class="row2"><div class="field"><label>Nombre *</label><input class="inp" id="m_nombre" value="${esc(l.nombre)}"/></div><div class="field"><label>Contacto (@ / WhatsApp)</label><input class="inp" id="m_contacto" value="${esc(l.contacto)}"/></div></div>
+    <div class="row2"><div class="field"><label>Email</label><input class="inp" id="m_email" type="email" value="${esc(l.email||'')}" placeholder="lead@mail.com"/></div><div class="field"><label>Teléfono</label><input class="inp" id="m_telefono" type="tel" value="${esc(l.telefono||'')}" placeholder="+54 9 ..."/></div></div>
     <div class="row2"><div class="field"><label>Temperatura</label><select id="m_temp">${TEMPS.map(t=>`<option ${l.temperatura===t?'selected':''}>${t}</option>`).join('')}</select></div><div class="field"><label>Estado</label><select id="m_estado">${ESTADOS.map(e=>`<option ${l.estado===e?'selected':''}>${e}</option>`).join('')}</select></div></div>
     <div class="row2"><div class="field"><label>Fuente</label><input class="inp" id="m_fuente" value="${esc(l.fuente)}"/></div><div class="field"><label>Asesor</label><select id="m_asesor"><option value="">— sin asignar —</option>${state.setters.map(s=>`<option value="${s.id}" ${l.asesor_id===s.id?'selected':''}>${esc(s.nombre)}</option>`).join('')}</select></div></div>
     <div class="field"><label>Tema que eligió</label><input class="inp" id="m_tema" value="${esc(l.tema)}"/></div>
+    <div class="field"><label>Situación actual <span class="sub2" style="font-weight:400">· contexto para el closer</span></label><textarea class="inp" id="m_situacion" rows="2">${esc(l.situacion||'')}</textarea></div>
+    <div class="field"><label>Objetivos</label><textarea class="inp" id="m_objetivos" rows="2">${esc(l.objetivos||'')}</textarea></div>
+    <div class="field"><label>Dolores</label><textarea class="inp" id="m_dolor" rows="2">${esc(l.dolor||'')}</textarea></div>
     ${state.clases.length?`<div class="field"><label>Asistencia a clases</label><div class="attend" id="m_asist">${state.clases.map(c=>`<button type="button" class="clbtn ${asist[c.id]?'yes':''}" data-cl="${c.id}">Clase ${c.numero}</button>`).join('')}</div></div>`:''}
     <div class="row2"><div class="field"><label>Próximo seguimiento</label><input class="inp" id="m_segf" type="date"/></div><div class="field"><label>Nota del seguimiento</label><input class="inp" id="m_segn" placeholder="ej: mandar audio FOMO"/></div></div>
     <div class="field"><label>Notas</label><textarea id="m_notas" rows="2">${esc(l.notas)}</textarea></div>
@@ -263,7 +267,7 @@ async function openLeadModal(lead){
   document.body.appendChild(ov);const g=id=>ov.querySelector('#'+id)
   ov.onclick=e=>{if(e.target===ov)ov.remove()};g('m_cancel').onclick=()=>ov.remove()
   ov.querySelectorAll('[data-cl]').forEach(b=>b.onclick=()=>b.classList.toggle('yes'))
-  g('m_save').onclick=async()=>{const p={nombre:g('m_nombre').value.trim(),contacto:g('m_contacto').value.trim(),temperatura:g('m_temp').value,estado:g('m_estado').value,fuente:g('m_fuente').value.trim(),asesor_id:g('m_asesor').value||null,tema:g('m_tema').value.trim(),notas:g('m_notas').value.trim(),lanzamiento_id:state.lanz?state.lanz.id:null,updated_at:new Date().toISOString()}
+  g('m_save').onclick=async()=>{const p={nombre:g('m_nombre').value.trim(),contacto:g('m_contacto').value.trim(),email:g('m_email').value.trim()||null,telefono:g('m_telefono').value.trim()||null,temperatura:g('m_temp').value,estado:g('m_estado').value,fuente:g('m_fuente').value.trim(),asesor_id:g('m_asesor').value||null,tema:g('m_tema').value.trim(),situacion:g('m_situacion').value.trim()||null,objetivos:g('m_objetivos').value.trim()||null,dolor:g('m_dolor').value.trim()||null,notas:g('m_notas').value.trim(),lanzamiento_id:state.lanz?state.lanz.id:null,updated_at:new Date().toISOString()}
     if(!p.nombre){toast('Poné un nombre');return};if(p.contacto)p.dedup_key=p.contacto.toLowerCase().replace(/[^a-z0-9]/g,'')
     let leadId=lead?lead.id:null,res=lead?await sb.from('leads').update(p).eq('id',lead.id):await sb.from('leads').insert(p).select().single()
     if(res.error){toast('Error: '+res.error.message);return};if(!lead)leadId=res.data.id
@@ -275,26 +279,32 @@ async function openLeadModal(lead){
   if(lead)g('m_del').onclick=async()=>{if(confirm('¿Eliminar este lead?')){await sb.from('leads').delete().eq('id',lead.id);toast('Eliminado');ov.remove();if(location.hash==='#/leads'){loadLeads();loadFunnel()}}}}
 
 /* ================= IMPORT ================= */
-function renderImport(){view().innerHTML=head('SETTER','Importar leads (CSV)')+`<div class="card"><p class="cdesc">Subí un CSV (primera fila = encabezado). Mapeás las columnas, se descartan duplicados por contacto y ${isMgr()?'se reparten entre asesores activos':'quedan a tu nombre'}.</p><input type="file" id="csv" accept=".csv,text/csv" class="inp" style="padding:14px"/><div id="mapArea"></div></div>`
-  document.getElementById('csv').onchange=handleCsv}
-function parseCsv(text){const rows=[];let i=0,cur='',row=[],q=false;const push=()=>{row.push(cur);cur=''},pushR=()=>{push();rows.push(row);row=[]}
-  while(i<text.length){const c=text[i];if(q){if(c==='"'){if(text[i+1]==='"'){cur+='"';i++}else q=false}else cur+=c}else{if(c==='"')q=true;else if(c===',')push();else if(c==='\n')pushR();else if(c==='\r'){}else cur+=c}i++}
-  if(cur.length||row.length)pushR();return rows.filter(r=>r.some(x=>x.trim()!==''))}
-let CSV=null
-function handleCsv(e){const f=e.target.files[0];if(!f)return;const rd=new FileReader()
-  rd.onload=()=>{const rows=parseCsv(rd.result);if(rows.length<2){toast('CSV vacío o sin datos');return};CSV={headers:rows[0],rows:rows.slice(1)}
-    const gs=(...k)=>CSV.headers.findIndex(h=>k.some(x=>h.toLowerCase().includes(x)))
-    const fs=[['nombre','Nombre',gs('nombre','name')],['contacto','Contacto (@ / WhatsApp)',gs('contacto','instagram','whats','usuario','telefono','phone')],['fuente','Fuente',gs('fuente','source','plataforma')],['temperatura','Temperatura',gs('temperatura','temp')]]
-    document.getElementById('mapArea').innerHTML=`<div style="margin-top:18px"><b style="font-size:13px">Mapeá las columnas · ${CSV.rows.length} filas</b><div class="mapgrid" style="margin-top:12px">${fs.map(([k,lab,gi])=>`<span class="csvcol">${lab}</span><select id="map_${k}"><option value="-1">— ninguna —</option>${CSV.headers.map((h,idx)=>`<option value="${idx}" ${idx===gi?'selected':''}>${esc(h)}</option>`).join('')}</select>`).join('')}</div><button class="btn primary" id="doImp">Importar ${CSV.rows.length} leads</button></div>`
-    document.getElementById('doImp').onclick=doImport}
-  rd.readAsText(f)}
-async function doImport(){const gm=k=>parseInt(document.getElementById('map_'+k).value),mi={nombre:gm('nombre'),contacto:gm('contacto'),fuente:gm('fuente'),temperatura:gm('temperatura')}
-  if(mi.nombre<0){toast('Elegí la columna de Nombre');return}
-  const setters=isMgr()?state.setters:[{id:me.id}],btn=document.getElementById('doImp');btn.textContent='Importando…'
-  const rows=CSV.rows.map((r,idx)=>{const contacto=mi.contacto>=0?(r[mi.contacto]||'').trim():'',temp=mi.temperatura>=0?(r[mi.temperatura]||'').trim().toLowerCase():''
-    return{nombre:(r[mi.nombre]||'').trim(),contacto,fuente:mi.fuente>=0?(r[mi.fuente]||'').trim():null,temperatura:TEMPS.includes(temp)?temp:'potencial',estado:'Nuevo',asesor_id:setters.length?setters[idx%setters.length].id:null,lanzamiento_id:state.lanz?state.lanz.id:null,dedup_key:contacto?contacto.toLowerCase().replace(/[^a-z0-9]/g,''):null}}).filter(r=>r.nombre)
-  let ok=0;for(let i=0;i<rows.length;i+=500){const chunk=rows.slice(i,i+500);const{error,count}=await sb.from('leads').upsert(chunk,{onConflict:'lanzamiento_id,dedup_key',ignoreDuplicates:true,count:'exact'});if(error){toast('Error: '+error.message);btn.textContent='Reintentar';return}ok+=count||chunk.length}
-  toast(`Importados ${ok} leads ✓`);location.hash='#/leads'}
+function renderImport(){view().innerHTML=head('SETTER','Cargar agenda')+`<div class="card"><p class="cdesc">Cargá el lead que agendó llamada, con sus datos completos y cuándo es la llamada.</p>
+    <div class="row2"><div class="field"><label>Nombre *</label><input class="inp" id="ag_nombre"/></div><div class="field"><label>Contacto (@ / WhatsApp)</label><input class="inp" id="ag_contacto"/></div></div>
+    <div class="row2"><div class="field"><label>Email</label><input class="inp" id="ag_email" type="email" placeholder="lead@mail.com"/></div><div class="field"><label>Teléfono</label><input class="inp" id="ag_telefono" type="tel" placeholder="+54 9 ..."/></div></div>
+    <div class="row2"><div class="field"><label>Fuente</label><input class="inp" id="ag_fuente" placeholder="instagram / youtube / ads"/></div><div class="field"><label>Temperatura</label><select id="ag_temp">${TEMPS.map(t=>`<option>${t}</option>`).join('')}</select></div></div>
+    <div class="field"><label>Tema que eligió</label><input class="inp" id="ag_tema"/></div>
+    <div class="row2"><div class="field"><label>Fecha de la llamada *</label><input class="inp" id="ag_fecha" type="date"/></div><div class="field"><label>Hora</label><input class="inp" id="ag_hora" type="time"/></div></div>
+    ${isMgr()?`<div class="field"><label>Asesor</label><select id="ag_asesor"><option value="">— sin asignar —</option>${state.setters.map(s=>`<option value="${s.id}">${esc(s.nombre)}</option>`).join('')}</select></div>`:''}
+    </div>
+    <div class="card"><h3>Contexto para el closer</h3><p class="cdesc">Mini reporte para que el closer llegue a la llamada con el terreno preparado.</p>
+    <div class="field"><label>Situación actual</label><textarea class="inp" id="ag_situacion" rows="2"></textarea></div>
+    <div class="field"><label>Objetivos</label><textarea class="inp" id="ag_objetivos" rows="2"></textarea></div>
+    <div class="field"><label>Dolores</label><textarea class="inp" id="ag_dolores" rows="2"></textarea></div>
+    <div class="actions"><div class="grow"></div><button class="btn primary" id="ag_save">Guardar agenda</button></div></div>`
+  document.getElementById('ag_save').onclick=saveAgenda}
+async function saveAgenda(){const g=id=>document.getElementById(id),btn=g('ag_save')
+  const nombre=g('ag_nombre').value.trim(),contacto=g('ag_contacto').value.trim(),fecha=g('ag_fecha').value
+  if(!nombre){toast('Poné un nombre');return}
+  if(!fecha){toast('Elegí la fecha de la llamada');return}
+  btn.textContent='Guardando…'
+  const asesorId=isMgr()?(g('ag_asesor').value||null):me.id
+  const p={nombre,contacto,email:g('ag_email').value.trim()||null,telefono:g('ag_telefono').value.trim()||null,fuente:g('ag_fuente').value.trim()||null,temperatura:g('ag_temp').value,tema:g('ag_tema').value.trim()||null,situacion:g('ag_situacion').value.trim()||null,objetivos:g('ag_objetivos').value.trim()||null,dolor:g('ag_dolores').value.trim()||null,estado:'Agendó',asesor_id:asesorId,lanzamiento_id:state.lanz?state.lanz.id:null,dedup_key:contacto?contacto.toLowerCase().replace(/[^a-z0-9]/g,''):null,updated_at:new Date().toISOString()}
+  const{data:lead,error}=await sb.from('leads').upsert(p,{onConflict:'lanzamiento_id,dedup_key'}).select().single()
+  if(error){toast('Error: '+error.message);btn.textContent='Guardar agenda';return}
+  const hora=g('ag_hora').value
+  await sb.from('seguimientos').insert({lead_id:lead.id,asesor_id:asesorId||me.id,fecha_programada:fecha,tipo:'agenda',nota:hora?`Llamada ${hora}hs`:'Llamada agendada'})
+  toast('Agenda guardada ✓');location.hash='#/calendario'}
 async function autoRepartir(){if(!confirm('¿Repartir los leads SIN asignar entre los asesores activos?'))return
   const{data:un}=await sb.from('leads').select('id').is('asesor_id',null).limit(5000);if(!un||!un.length){toast('No hay leads sin asignar');return}
   const st=state.setters;if(!st.length){toast('No hay asesores activos');return}
@@ -304,18 +314,19 @@ async function autoRepartir(){if(!confirm('¿Repartir los leads SIN asignar entr
 /* ================= KPIS DIARIOS ================= */
 async function renderKpis(){const today=new Date().toISOString().slice(0,10)
   view().innerHTML=head('SETTER','KPIs diarios')+`<div class="card"><h3>Cargar KPI del día</h3><p class="cdesc">Se actualizan cada vez que guardás — podés volver a cargar durante el día.</p>
-    <div class="row3"><div class="field"><label>Fecha</label><input class="inp" id="k_fecha" type="date" value="${today}"/></div><div class="field"><label>Chats únicos</label><input class="inp" id="k_chats" type="number" value="0"/></div><div class="field"><label>Conversaciones</label><input class="inp" id="k_conv" type="number" value="0"/></div></div>
-    <div class="row3"><div class="field"><label>VSL enviados</label><input class="inp" id="k_vsl" type="number" value="0"/></div><div class="field"><label>Calendarios</label><input class="inp" id="k_cal" type="number" value="0"/></div><div class="field"><label>Agendas</label><input class="inp" id="k_ag" type="number" value="0"/></div></div>
-    <div class="row2"><div class="field"><label>Calificados</label><input class="inp" id="k_cali" type="number" value="0"/></div><div class="field"><label>Notas</label><input class="inp" id="k_notas"/></div></div>
+    <div class="field"><label>Fecha</label><input class="inp" id="k_fecha" type="date" value="${today}"/></div>
+    <div class="row3"><div class="field"><label>Leads asignados</label><input class="inp" id="k_asig" type="number" value="0"/></div><div class="field"><label>Leads contactados</label><input class="inp" id="k_cont" type="number" value="0"/></div><div class="field"><label>Leads sin responder</label><input class="inp" id="k_sinresp" type="number" value="0"/></div></div>
+    <div class="row3"><div class="field"><label>Leves</label><input class="inp" id="k_leves" type="number" value="0"/></div><div class="field"><label>Fluidos</label><input class="inp" id="k_fluidos" type="number" value="0"/></div><div class="field"><label>Potenciales</label><input class="inp" id="k_potenciales" type="number" value="0"/></div></div>
+    <div class="row2"><div class="field"><label>Agendas del día</label><input class="inp" id="k_agdia" type="number" value="0"/></div><div class="field"><label>Notas</label><input class="inp" id="k_notas"/></div></div>
     <div class="actions"><div class="grow"></div><button class="btn primary" id="k_save">Guardar KPIs del día</button></div></div>
-    <div class="tablewrap"><table><thead><tr><th>Fecha</th><th>Setter</th><th>Chats</th><th>Conv.</th><th>VSL</th><th>Cal.</th><th>Agendas</th><th>Calif.</th></tr></thead><tbody id="khist"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table></div>`
+    <div class="tablewrap"><table><thead><tr><th>Fecha</th><th>Setter</th><th>Asig.</th><th>Cont.</th><th>Sin resp.</th><th>Leves</th><th>Fluidos</th><th>Potenc.</th><th>Agendas</th></tr></thead><tbody id="khist"><tr><td colspan="9" class="empty">Cargando…</td></tr></tbody></table></div>`
   document.getElementById('k_save').onclick=async()=>{const g=id=>document.getElementById(id)
-    const p={setter_id:me.id,fecha:g('k_fecha').value,chats_unicos:+g('k_chats').value,conversaciones:+g('k_conv').value,vsl:+g('k_vsl').value,calendarios:+g('k_cal').value,agendas:+g('k_ag').value,calificados:+g('k_cali').value,notas:g('k_notas').value.trim()}
+    const p={setter_id:me.id,fecha:g('k_fecha').value,leads_asignados:+g('k_asig').value,leads_contactados:+g('k_cont').value,leads_sin_responder:+g('k_sinresp').value,leves:+g('k_leves').value,fluidos:+g('k_fluidos').value,potenciales:+g('k_potenciales').value,agendas_dia:+g('k_agdia').value,notas:g('k_notas').value.trim()}
     const{error}=await sb.from('kpis_diarios').upsert(p,{onConflict:'setter_id,fecha'});if(error){toast('Error: '+error.message);return};toast('Guardado ✓');loadKhist()}
   loadKhist()}
 async function loadKhist(){const el=document.getElementById('khist');if(!el)return
   let q=sb.from('kpis_diarios').select('*').order('fecha',{ascending:false}).limit(60);if(!isMgr())q=q.eq('setter_id',me.id)
-  const{data}=await q;el.innerHTML=(data&&data.length)?data.map(k=>`<tr><td class="nm">${esc(k.fecha)}</td><td>${esc(nameOf(k.setter_id)||'—')}</td><td>${k.chats_unicos}</td><td>${k.conversaciones}</td><td>${k.vsl}</td><td>${k.calendarios}</td><td>${k.agendas}</td><td>${k.calificados}</td></tr>`).join(''):`<tr><td colspan="8" class="empty">Sin registros todavía.</td></tr>`}
+  const{data}=await q;el.innerHTML=(data&&data.length)?data.map(k=>`<tr><td class="nm">${esc(k.fecha)}</td><td>${esc(nameOf(k.setter_id)||'—')}</td><td>${k.leads_asignados||0}</td><td>${k.leads_contactados||0}</td><td>${k.leads_sin_responder||0}</td><td>${k.leves||0}</td><td>${k.fluidos||0}</td><td>${k.potenciales||0}</td><td>${k.agendas_dia||0}</td></tr>`).join(''):`<tr><td colspan="9" class="empty">Sin registros todavía.</td></tr>`}
 
 /* ================= TRIAGE ================= */
 async function renderTriage(){view().innerHTML=head('CLOSER','Triage')+`<div class="card"><h3>Agendas para triage</h3><p class="cdesc">Leads que agendaron y hay que calificar/preparar antes de la call.</p><div id="tr"></div></div>`
@@ -659,7 +670,7 @@ async function renderFacturacion(){
   document.getElementById('facBody').innerHTML=cards+total+wallets}
 
 /* ================= COMISIONES ================= */
-let comLanzFilter=null,COM_LINES=[],COM_PAID=new Set(),facLanzFilter=null,ventasSrc='all'
+let comLanzFilter=null,COM_LINES=[],COM_PAID=new Set(),MANUAL_PAG={},facLanzFilter=null,ventasSrc='all'
 const lanzLabel=l=>(l.numero!=null?('N° '+l.numero+' · '):'')+esc(l.nombre||'Lanzamiento')
 async function renderComisiones(){
   const{data:lanzs}=await sb.from('lanzamientos').select('id,numero,nombre').order('numero',{ascending:true,nullsFirst:false})
@@ -689,6 +700,9 @@ async function renderComisiones(){
   const{data:senas}=await sq
   const{data:pagos}=await sb.from('comision_pagos').select('origen_tipo,origen_id,rol').limit(20000)
   const paid=new Set((pagos||[]).map(p=>p.origen_tipo+':'+p.origen_id+':'+p.rol))
+  const{data:manuales}=await sb.from('pagos_manuales').select('persona_id,rol,monto_usd').limit(20000)
+  const manualAgg={};(manuales||[]).forEach(m=>{const k=m.persona_id+':'+m.rol;manualAgg[k]=(manualAgg[k]||0)+Number(m.monto_usd||0)})
+  MANUAL_PAG=manualAgg
   const lines=[],ventasConCobro=new Set()
   const push=(tipo,id,comBase,v)=>{const label=(v.leads&&v.leads.nombre)||v.cliente||'—'
     if(v.setter_id)lines.push({tipo,id,ventaId:v.id,rol:'setter',personaId:v.setter_id,base:comBase,pct:Number(v.com_setter_pct||0),monto:comBase*Number(v.com_setter_pct||0)/100,label,lanzId:v.lanzamiento_id})
@@ -703,7 +717,8 @@ async function renderComisiones(){
     const base=Number(v.ticket||0)/(Number(v.cotizacion)||1),pct=Number(dir.com_director_pct)||0
     lines.push({tipo:'venta',id:v.id,ventaId:v.id,rol:'director',personaId:dir.id,base,pct,monto:base*pct/100,label:(v.leads&&v.leads.nombre)||v.cliente||'—',lanzId:v.lanzamiento_id})})
   COM_LINES=lines;COM_PAID=paid
-  const roleAgg=rol=>{const o={};lines.filter(l=>l.rol===rol).forEach(l=>{const a=o[l.personaId]=o[l.personaId]||{dev:0,pag:0};a.dev+=l.monto;if(paid.has(l.tipo+':'+l.id+':'+l.rol))a.pag+=l.monto});return o}
+  const roleAgg=rol=>{const o={};lines.filter(l=>l.rol===rol).forEach(l=>{const a=o[l.personaId]=o[l.personaId]||{dev:0,pag:0};a.dev+=l.monto;if(paid.has(l.tipo+':'+l.id+':'+l.rol))a.pag+=l.monto})
+    Object.keys(o).forEach(pid=>{o[pid].pag+=Number(manualAgg[pid+':'+rol]||0)});return o}
   const setAgg=roleAgg('setter'),cloAgg=roleAgg('closer'),dirAgg=roleAgg('director')
   const tot=o=>Object.values(o).reduce((a,x)=>({dev:a.dev+x.dev,pag:a.pag+x.pag}),{dev:0,pag:0})
   const ts=tot(setAgg),tc=tot(cloAgg),tdd=tot(dirAgg),dev=ts.dev+tc.dev+tdd.dev,pag=ts.pag+tc.pag+tdd.pag
@@ -714,10 +729,12 @@ async function renderComisiones(){
   document.getElementById('cloTbl').innerHTML=tbl(cloAgg,'closer')
   document.getElementById('dirTbl').innerHTML=tbl(dirAgg,'director')
   document.querySelectorAll('[data-det]').forEach(b=>b.onclick=()=>{const parts=b.dataset.det.split('|');openComDetalle(parts[0],parts[1])})}
-function openComDetalle(rol,personaId){
+async function openComDetalle(rol,personaId){
   const p=state.setters.find(x=>x.id===personaId),nombre=(p&&p.nombre)||'—'
   const mine=COM_LINES.filter(l=>l.rol===rol&&l.personaId===personaId&&l.monto>0.005)
   const ov=document.createElement('div');ov.className='overlay';let changed=false
+  let{data:manuals}=await sb.from('pagos_manuales').select('*').eq('persona_id',personaId).eq('rol',rol).order('pagado_at',{ascending:false})
+  manuals=manuals||[]
   const keyOf=l=>l.tipo+':'+l.id+':'+l.rol
   const groups=()=>{const g={},ord=[];mine.forEach((l,i)=>{const k=String(l.ventaId);if(!g[k]){g[k]={label:l.label,items:[]};ord.push(k)}g[k].items.push({l,i})});return{g,ord}}
   const body=()=>{const{g,ord}=groups();if(!ord.length)return ''
@@ -727,19 +744,35 @@ function openComDetalle(rol,personaId){
       const rows=grp.items.map(({l,i})=>{const pd=COM_PAID.has(keyOf(l))
         return `<tr><td class="sub2" style="padding-left:22px">↳ ${l.tipo==='sena'?'seña':l.tipo==='venta'?'facturación':'cuota'}</td><td class="sub2">${money(l.base)}</td><td class="sub2">${l.pct}%</td><td>${money(l.monto)}</td><td>${pd?'<span class="chip cobrado">pagada</span>':'<span class="chip pendiente">pend.</span>'}</td>${isMgr()?`<td><button class="pg" data-tog="${i}">${pd?'quitar':'pagar'}</button></td>`:''}</tr>`}).join('')
       return head+rows}).join('')}
-  const totals=()=>{const dev=mine.reduce((a,l)=>a+l.monto,0),pag=mine.reduce((a,l)=>a+(COM_PAID.has(keyOf(l))?l.monto:0),0);return{dev,pag}}
-  const draw=()=>{const t=totals();ov.querySelector('#cd_sum').textContent=`Comisión total ${money(t.dev)} · Pagado ${money(t.pag)} · Pendiente ${money(t.dev-t.pag)}`;ov.querySelector('#cd_body').innerHTML=body()||`<tr><td colspan="6" class="empty">Sin ventas con comisión todavía.</td></tr>`;wire()}
+  const manualTotal=()=>manuals.reduce((a,m)=>a+Number(m.monto_usd||0),0)
+  const totals=()=>{const dev=mine.reduce((a,l)=>a+l.monto,0),pag=mine.reduce((a,l)=>a+(COM_PAID.has(keyOf(l))?l.monto:0),0)+manualTotal();return{dev,pag}}
+  const manualBody=()=>manuals.length?manuals.map(m=>`<tr><td class="sub2">${fmtDate(m.pagado_at)}</td><td class="nm">${money(Number(m.monto_usd||0))}</td><td class="sub2">${esc(m.nota||'')}</td>${isMgr()?`<td><button class="pg" data-delman="${m.id}">quitar</button></td>`:''}</tr>`).join(''):`<tr><td colspan="4" class="empty">Sin pagos manuales todavía.</td></tr>`
+  const draw=()=>{const t=totals();ov.querySelector('#cd_sum').textContent=`Comisión total ${money(t.dev)} · Pagado ${money(t.pag)} · Pendiente ${money(t.dev-t.pag)}`;ov.querySelector('#cd_body').innerHTML=body()||`<tr><td colspan="6" class="empty">Sin ventas con comisión todavía.</td></tr>`
+    const mb=ov.querySelector('#cd_manbody');if(mb)mb.innerHTML=manualBody();wire()}
   const setPaid=async(l,val)=>{const m={origen_tipo:l.tipo,origen_id:l.id,rol:l.rol}
     if(val){const{error}=await sb.from('comision_pagos').upsert({...m,persona_id:l.personaId,lanzamiento_id:l.lanzId||null,monto_usd:l.monto,pagado_by:me.id,pagado_at:new Date().toISOString()},{onConflict:'origen_tipo,origen_id,rol'});if(error){toast('Error: '+error.message);return}COM_PAID.add(keyOf(l))}
     else{const{error}=await sb.from('comision_pagos').delete().match(m);if(error){toast('Error: '+error.message);return}COM_PAID.delete(keyOf(l))}
     changed=true}
+  const addManual=async()=>{const inp=ov.querySelector('#cd_manmonto'),nota=ov.querySelector('#cd_mannota'),monto=Number(inp.value)
+    if(!(monto>0)){toast('Poné un monto mayor a 0');return}
+    const{data,error}=await sb.from('pagos_manuales').insert({persona_id:personaId,rol,monto_usd:monto,nota:nota.value.trim()||null,pagado_by:me.id}).select().single()
+    if(error){toast('Error: '+error.message);return}
+    manuals.unshift(data);inp.value='';nota.value='';changed=true;draw();toast('Pago registrado ✓')}
+  const delManual=async(id)=>{if(!confirm('¿Quitar este pago?'))return
+    const{error}=await sb.from('pagos_manuales').delete().eq('id',id);if(error){toast('Error: '+error.message);return}
+    manuals=manuals.filter(m=>m.id!==id);changed=true;draw()}
   function wire(){
     ov.querySelectorAll('[data-tog]').forEach(b=>b.onclick=async()=>{const l=mine[Number(b.dataset.tog)];await setPaid(l,!COM_PAID.has(keyOf(l)));draw()})
-    ov.querySelectorAll('[data-togv]').forEach(b=>b.onclick=async()=>{const grp=mine.filter(l=>String(l.ventaId)===b.dataset.togv),allPaid=grp.every(l=>COM_PAID.has(keyOf(l)));for(const l of grp)await setPaid(l,!allPaid);draw()})}
+    ov.querySelectorAll('[data-togv]').forEach(b=>b.onclick=async()=>{const grp=mine.filter(l=>String(l.ventaId)===b.dataset.togv),allPaid=grp.every(l=>COM_PAID.has(keyOf(l)));for(const l of grp)await setPaid(l,!allPaid);draw()})
+    ov.querySelectorAll('[data-delman]').forEach(b=>b.onclick=()=>delManual(b.dataset.delman))
+    const ab2=ov.querySelector('#cd_manadd');if(ab2)ab2.onclick=addManual}
   ov.innerHTML=`<div class="modal" style="max-width:720px"><h2>${esc(nombre)} · comisión ${rol}</h2>
     <p class="cdesc" id="cd_sum"></p>
     ${isMgr()?'<div class="actions" style="margin:0 0 12px"><button class="btn ghost" id="cd_all">Marcar todo pagado</button></div>':''}
     <div class="tablewrap" style="margin:0"><table><thead><tr><th>Venta / origen</th><th>Base</th><th>%</th><th>Comisión</th><th>Estado</th>${isMgr()?'<th></th>':''}</tr></thead><tbody id="cd_body"></tbody></table></div>
+    <h3 style="margin-top:22px">Pagos manuales</h3><p class="cdesc">Cargá un monto suelto (parcial o total) y se resta directo del pendiente — sin marcar líneas.</p>
+    ${isMgr()?`<div class="row3"><div class="field"><label>Monto USD</label><input class="inp" id="cd_manmonto" type="number" step="0.01" placeholder="150"/></div><div class="field"><label>Nota</label><input class="inp" id="cd_mannota" placeholder="opcional"/></div><div class="field" style="display:flex;align-items:flex-end"><button class="btn primary" id="cd_manadd" style="width:100%">Registrar pago</button></div></div>`:''}
+    <div class="tablewrap" style="margin:12px 0 0"><table><thead><tr><th>Fecha</th><th>Monto</th><th>Nota</th>${isMgr()?'<th></th>':''}</tr></thead><tbody id="cd_manbody"></tbody></table></div>
     <div class="actions"><div class="grow"></div><button class="btn primary" id="cd_close">Cerrar</button></div></div>`
   document.body.appendChild(ov);draw()
   if(isMgr()){const ab=ov.querySelector('#cd_all');if(ab)ab.onclick=async()=>{for(const l of mine){if(!COM_PAID.has(keyOf(l)))await setPaid(l,true)}draw();toast('Marcadas ✓')}}
@@ -870,10 +903,12 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
   <p class="lead2">Cargar leads, contactarlos, hacerlos avanzar y agendar la llamada con el closer.</p>
   <ol class="steps">
     <li><b>Panel general</b> → "Seguimientos de hoy": tu cola del día.</li>
-    <li><b>Leads → + Nuevo lead</b> (o Importar CSV): nombre, contacto, fuente y temperatura.</li>
+    <li><b>Leads → + Nuevo lead</b>: nombre, contacto, email, teléfono, fuente y temperatura.</li>
+    <li><b>Cargar agenda</b>: cuando un lead agenda llamada, cargá sus datos completos (email, teléfono) junto con la fecha y hora — queda reflejado en el Calendario.</li>
+    <li>En la misma <b>Cargar agenda</b>, completá el bloque <b>"Contexto para el closer"</b>: situación actual, objetivos y dolores — es el mini reporte que el closer va a ver en Triage antes de la llamada.</li>
     <li>Abrí el lead y <b>cambiá el Estado</b> a medida que avanza.</li>
     <li>Cargá un <b>próximo seguimiento</b> (fecha + nota) dentro del lead.</li>
-    <li><b>KPIs diarios</b> → cargá tus números del día.</li>
+    <li><b>KPIs diarios</b> → cargá: leads asignados, contactados, sin responder, leves, fluidos, potenciales y agendas del día.</li>
   </ol>
   <div class="flow"><span class="st">Nuevo</span><span class="ar">→</span><span class="st">Contactado</span><span class="ar">→</span><span class="st">Confirmó clase</span><span class="ar">→</span><span class="st">Asistió</span><span class="ar">→</span><span class="st">Agendó</span></div></div>
 
@@ -881,7 +916,7 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
   <div class="gcard role closer"><span class="tag closer">Closer</span><h3>Tu día en el CRM</h3>
   <p class="lead2">Preparar la llamada, tomarla y cargar el resultado (y la venta si cerró).</p>
   <ol class="steps">
-    <li><b>Triage</b> → leads que agendaron y hay que calificar antes de la call.</li>
+    <li><b>Triage</b> → leads que agendaron y hay que calificar antes de la call. Abrí el lead para ver el <b>contexto que cargó el setter</b> (situación, objetivos, dolores) antes de entrar a la llamada.</li>
     <li><b>Reporte de llamadas</b> → elegí el lead, si se presentó y el Resultado (Cerró / Seguimiento / No cierre).</li>
     <li>Completá <b>situación, dolores, razones de compra, objeciones y frases clave</b>.</li>
     <li><b>Si cerró:</b> completá el bloque <b>Venta</b> (ticket, pagó, cuotas, comprobante, setter y closer).</li>
@@ -904,7 +939,7 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
     <li><b>Comisiones → Lanzamientos</b>: numerá el actual (ej: N° 7) o creá uno nuevo.</li>
     <li><b>Comisiones → Equipo · roles y comisiones</b>: rol + % setter / % closer de cada uno.<div class="d">Si el % está en 0, esa persona no genera comisión.</div></li>
     <li><b>A pagar por origen</b>: comisiones a pagar por cada lanzamiento / funnel / referidos.</li>
-    <li>Tocá el <b>nombre</b> de una persona → su detalle → marcá comisiones <b>pagadas</b>.</li>
+    <li>Tocá el <b>nombre</b> de una persona → su detalle → marcá comisiones <b>pagadas</b> línea por línea, o cargá un <b>pago manual</b> (monto suelto, parcial o total) que se resta directo del pendiente.</li>
   </ol></div>
 
   <h2 id="g_flu">Flujos rápidos</h2>
@@ -926,9 +961,16 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
     <div class="gcard" style="margin:0"><h3>✅ Marcar comisión pagada</h3><ol class="steps">
       <li><b>Comisiones</b> → tocá el <b>nombre</b> de la persona.</li>
       <li>Detalle por venta: Ganado / Pagado / Pendiente.</li>
-      <li>Tocá <b>"pagar"</b> cuando le transferiste.</li>
+      <li>Tocá <b>"pagar"</b> cuando le transferiste esa línea puntual.</li>
     </ol></div>
   </div>
+  <div class="gcard"><h3>💸 Registrar un pago parcial (sin marcar líneas)</h3>
+    <p class="lead2">Para cuando le pagás un monto suelto a alguien y no querés reconciliar línea por línea (ej: le debés $400 y le transferís $150 hoy).</p>
+    <ol class="steps">
+      <li><b>Comisiones</b> → tocá el <b>nombre</b> de la persona.</li>
+      <li>Abajo del detalle, en <b>"Pagos manuales"</b>: cargá el monto (y una nota si querés) → <b>Registrar pago</b>.</li>
+      <li>El <b>Pendiente</b> de esa persona baja automáticamente ese monto. Podés cargar varios pagos hasta llegar a $0, o quitar uno si te equivocaste.</li>
+    </ol></div>
   <div class="gcard"><h3>✏️ Corregir algo mal cargado</h3>
     <div class="flow"><span class="st">Ventas / Señas</span><span class="ar">→</span><span class="st">clic en la fila</span><span class="ar">→</span><span class="st">editar o eliminar</span></div>
     <p class="lead2" style="margin-top:8px">Podés cambiar montos, moneda, cuotas, reemplazar comprobante o eliminar. <b style="color:var(--ink)">Ojo:</b> editar una venta regenera sus cuotas.</p></div>
@@ -946,6 +988,9 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
     <tr><td><b>Canal</b></td><td class="m">Origen de la venta: Lanzamiento, Funnel o Referido.</td></tr>
     <tr><td><b>Cotización</b></td><td class="m">Cuántos pesos equivalen a 1 USD.</td></tr>
     <tr><td><b>Base comisionable</b></td><td class="m">Tope sobre el que se calculan las comisiones. El recargo/interés por encima de la base no comisiona.</td></tr>
+    <tr><td><b>Contexto para el closer</b></td><td class="m">Situación, objetivos y dolores del lead que carga el setter al agendar — el closer lo ve en Triage.</td></tr>
+    <tr><td><b>Pago manual</b></td><td class="m">Monto suelto que registrás para una persona y se resta directo de su comisión pendiente, sin marcar líneas de venta.</td></tr>
+    <tr><td><b>Leve / Fluido / Potencial</b></td><td class="m">Temperatura del lead: leve = sin relación, fluido = ya hay charla real, potencial = interés directo en sumarse.</td></tr>
   </table></div>
 </div>`}
 
