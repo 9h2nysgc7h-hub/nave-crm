@@ -344,8 +344,16 @@ async function saveAgenda(){const g=id=>document.getElementById(id),btn=g('ag_sa
   btn.textContent='Guardando…'
   const showAsesor=isMgr()||myProfile.rol==='closer'
   const asesorId=showAsesor?(g('ag_asesor').value||null):me.id
-  const p={nombre,telefono:telefono||null,email:g('ag_email').value.trim()||null,fuente:g('ag_fuente').value,temperatura:g('ag_temp').value,situacion:g('ag_situacion').value.trim()||null,objetivos:g('ag_objetivos').value.trim()||null,dolor:g('ag_dolores').value.trim()||null,estado:'Agendó',asesor_id:asesorId,lanzamiento_id:state.lanz?state.lanz.id:null,dedup_key:telefono?telefono.toLowerCase().replace(/[^a-z0-9]/g,''):null,updated_at:new Date().toISOString()}
-  const{data:lead,error}=await sb.from('leads').upsert(p,{onConflict:'lanzamiento_id,dedup_key'}).select().single()
+  const dedup_key=telefono?telefono.toLowerCase().replace(/[^a-z0-9]/g,''):null,lanzamiento_id=state.lanz?state.lanz.id:null
+  const p={nombre,telefono:telefono||null,email:g('ag_email').value.trim()||null,fuente:g('ag_fuente').value,temperatura:g('ag_temp').value,situacion:g('ag_situacion').value.trim()||null,objetivos:g('ag_objetivos').value.trim()||null,dolor:g('ag_dolores').value.trim()||null,estado:'Agendó',asesor_id:asesorId,lanzamiento_id,dedup_key,updated_at:new Date().toISOString()}
+  let lead,error
+  if(dedup_key){
+    const{data:existing}=await sb.from('leads').select('id').eq('lanzamiento_id',lanzamiento_id).eq('dedup_key',dedup_key).limit(1)
+    const r=existing&&existing[0]?await sb.from('leads').update(p).eq('id',existing[0].id).select().single():await sb.from('leads').insert(p).select().single()
+    lead=r.data;error=r.error
+  }else{
+    const r=await sb.from('leads').insert(p).select().single();lead=r.data;error=r.error
+  }
   if(error){toast('Error: '+error.message);btn.textContent='Guardar agenda';return}
   await sb.from('seguimientos').insert({lead_id:lead.id,asesor_id:asesorId||me.id,fecha_programada:fecha,tipo:'agenda',nota:'Llamada agendada'})
   toast('Agenda guardada ✓');location.hash='#/calendario'}
