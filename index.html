@@ -58,6 +58,7 @@
   .chip{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:3px 8px;border-radius:20px}
   .chip.fluido{color:var(--fluido);background:rgba(70,224,160,.12)}.chip.potencial{color:var(--potencial);background:rgba(224,178,74,.12)}.chip.leve{color:var(--leve);background:rgba(124,134,152,.14)}
   .chip.pendiente{color:var(--warn);background:rgba(224,178,74,.12)}.chip.cobrado{color:var(--good);background:rgba(70,224,160,.12)}.chip.vencido{color:var(--danger);background:rgba(240,101,79,.12)}
+  .chip.advertencia{color:var(--warn);background:rgba(224,178,74,.12)}.chip.strike{color:var(--danger);background:rgba(240,101,79,.12)}.chip.vetado{color:#fff;background:var(--danger)}
   .estado{display:inline-flex;align-items:center;gap:7px;color:var(--ink);font-size:12.5px}.dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}
   .who{display:inline-flex;align-items:center;gap:7px}.who .a{width:22px;height:22px;border-radius:50%;background:#222838;display:grid;place-items:center;font-size:10px;color:var(--ink);font-weight:700}
   .foot{display:flex;align-items:center;gap:12px;padding:12px 16px;border-top:1px solid var(--line);color:var(--faint);font-family:var(--mono);font-size:11px}
@@ -104,6 +105,7 @@ const money=n=>'US$ '+(Number(n||0)).toLocaleString('es',{minimumFractionDigits:
 const fmtCur=(n,mon)=>(mon||'USD')+' '+(Number(n||0)).toLocaleString('es',{minimumFractionDigits:2,maximumFractionDigits:2})
 const num=n=>(Number(n||0)).toLocaleString('es')
 const nameOf=id=>{const s=state.setters.find(x=>x.id===id);return s?s.nombre:null}
+const rolOf=id=>{const s=state.setters.find(x=>x.id===id);return s?s.rol:null}
 const CANALES=[['lanzamiento','Lanzamiento'],['funnel','Funnel'],['referido','Referido']]
 const EQUIPOS=[['','— sin equipo —'],['nexus','Nexus'],['puente','Puente']]
 const equipoLabel=e=>e==='nexus'?'Nexus':e==='puente'?'Puente':'—'
@@ -169,7 +171,7 @@ async function ensureClases(){if(!state.lanz)return
 // Tercer elemento de cada item = roles (aparte de manager/admin, que siempre ven todo) que lo ven.
 // null = todos los roles. [] = solo manager/admin.
 const NAV=[
-  {g:null,items:[['#/panel','Panel general',null],['#/calendario','Calendario',null],['#/guia','Guía',null]]},
+  {g:null,items:[['#/panel','Panel general',null],['#/calendario','Calendario',null],['#/strikes','Strikes',null],['#/guia','Guía',null]]},
   {g:'Setter',items:[['#/leads','Leads',['setter']],['#/nuevo','Nuevo lead',['setter']],['#/importar','Cargar agenda',['setter']],['#/kpis','KPIs diarios',['setter']]]},
   {g:'Closer',items:[['#/triage','Triage',['closer']],['#/reporte','Reporte de llamadas',['closer']],['#/grilla','Grilla de reportes',['closer','setter']]]},
   {g:'Ventas',items:[['#/ventas','Ventas',null],['#/senas','Señas',null]]},
@@ -187,7 +189,7 @@ function renderShell(){
   document.getElementById('so').onclick=()=>sb.auth.signOut();window.onhashchange=route}
 function setActive(){root.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('on',a.dataset.h===location.hash))}
 function route(){setActive();const h=location.hash
-  const map={'#/panel':renderPanel,'#/calendario':renderCalendario,'#/guia':renderGuia,'#/leads':renderLeads,'#/nuevo':()=>openLeadModal(),'#/importar':renderImport,'#/kpis':renderKpis,'#/triage':renderTriage,'#/reporte':renderReporte,'#/grilla':renderGrilla,'#/ventas':renderVentas,'#/senas':renderSenas,'#/comisiones':renderComisiones,'#/facturacion':renderFacturacion,'#/marketing':renderMarketing,'#/cobros':renderCobros}
+  const map={'#/panel':renderPanel,'#/calendario':renderCalendario,'#/guia':renderGuia,'#/strikes':renderStrikes,'#/leads':renderLeads,'#/nuevo':()=>openLeadModal(),'#/importar':renderImport,'#/kpis':renderKpis,'#/triage':renderTriage,'#/reporte':renderReporte,'#/grilla':renderGrilla,'#/ventas':renderVentas,'#/senas':renderSenas,'#/comisiones':renderComisiones,'#/facturacion':renderFacturacion,'#/marketing':renderMarketing,'#/cobros':renderCobros}
   ;(map[h]||renderPanel)()}
 function head(sub,title,actions=''){return `<div class="top"><div><div class="sub">${sub}</div><h1>${title}</h1></div><div class="grow"></div>${actions}</div>`}
 
@@ -908,6 +910,59 @@ async function renderCalendario(){view().innerHTML=head('AGENDA','Calendario')+`
   const byDay={};items.forEach(i=>{(byDay[i.d]=byDay[i.d]||[]).push(i)})
   const days=Object.keys(byDay)
   document.getElementById('ag').innerHTML=days.length?days.map(d=>`<div class="day">${new Date(d+'T00:00').toLocaleDateString('es',{weekday:'long',day:'2-digit',month:'long'})}</div>${byDay[d].map(i=>`<div class="ev"><span class="tg">${i.tg}</span><span>${esc(i.t)}</span></div>`).join('')}`).join(''):`<div class="empty">No hay clases ni seguimientos agendados.</div>`}
+
+/* ================= STRIKES ================= */
+async function renderStrikes(){const canLog=isMgr()||myProfile.rol==='director'
+  view().innerHTML=head('EQUIPO','Strikes')+`
+    <div class="card"><h3>Cómo funciona</h3>
+      <p class="cdesc">Dos niveles de falta: <b>advertencia</b> (leve) y <b>strike</b> (grave). Cada 3 advertencias se convierten solas en 1 strike. La escalada de comisión no es pareja: pega más fuerte en el segundo tramo, y el tercero ya no es un descuento — es la salida del equipo. Vale para lo que dure el lanzamiento actual; con el próximo, todo arranca de nuevo en cero.</p>
+      <div class="tablewrap" style="margin:0"><table><thead><tr><th>Strikes</th><th>Consecuencia</th></tr></thead><tbody>
+        <tr><td class="nm">0–2</td><td class="sub2">Sin cambios</td></tr>
+        <tr><td class="nm">3</td><td><span class="chip strike">−5% comisión</span></td></tr>
+        <tr><td class="nm">6</td><td><span class="chip strike">−15% comisión</span></td></tr>
+        <tr><td class="nm">9</td><td><span class="chip vetado">Vetado del equipo</span></td></tr>
+      </tbody></table></div>
+      <p class="cdesc" style="margin-top:12px"><b>Faltas leves</b> (ejemplos): no cargar el reporte de la llamada el mismo día, no completar los KPIs diarios, llegar tarde a una call, no presentarse a la daily, no cargar la agenda en el día, cargar una venta sin comprobante, cargar mal una seña.</p>
+      <p class="cdesc"><b>Faltas graves</b> (ejemplos): no presentarse a una call sin avisar, datos falsos en un reporte o ticket, maltratar a un lead, ocultar un comprobante real, cobrarle mal a un lead (monto o medio de pago), no aplicar las estrategias del lanzamiento bajadas por los directores.</p>
+    </div>
+    ${canLog?`<div class="card"><h3>Registrar sanción</h3>
+      <div class="row3">
+        <div class="field"><label>Persona</label><select id="sk_persona">${state.setters.filter(s=>['setter','closer'].includes(s.rol)).map(s=>`<option value="${s.id}">${esc(s.nombre)} (${s.rol})</option>`).join('')}</select></div>
+        <div class="field"><label>Tipo</label><select id="sk_tipo"><option value="advertencia">Advertencia (leve)</option><option value="strike">Strike (grave)</option></select></div>
+        <div class="field"><label>Fecha</label><input class="inp" id="sk_fecha" type="date" value="${new Date().toISOString().slice(0,10)}"/></div>
+      </div>
+      <div class="field"><label>Motivo</label><textarea class="inp" id="sk_motivo" rows="2" placeholder="Qué pasó, en una línea"></textarea></div>
+      <div class="actions"><div class="grow"></div><button class="btn primary" id="sk_save">Registrar</button></div>
+    </div>`:''}
+    <div class="card"><h3>Estado por persona</h3><p class="cdesc">Contando advertencias y strikes del lanzamiento actual.</p>
+      <div class="tablewrap" style="margin:0"><table><thead><tr><th>Persona</th><th>Rol</th><th>Advertencias activas</th><th>Strikes</th><th>Estado</th></tr></thead><tbody id="sk_estado"><tr><td colspan="5" class="empty">Cargando…</td></tr></tbody></table></div>
+    </div>
+    <div class="card"><h3>Historial <span class="sub2" style="font-weight:400">· público, lo ve todo el equipo</span></h3>
+      <div class="tablewrap" style="margin:0"><table><thead><tr><th>Fecha</th><th>Persona</th><th>Rol</th><th>Tipo</th><th>Motivo</th><th>Registrado por</th><th>Cargado</th></tr></thead><tbody id="sk_hist"><tr><td colspan="7" class="empty">Cargando…</td></tr></tbody></table></div>
+    </div>`
+  if(canLog)document.getElementById('sk_save').onclick=saveSancion
+  loadStrikes()}
+async function saveSancion(){const g=id=>document.getElementById(id)
+  const persona_id=g('sk_persona').value,tipo=g('sk_tipo').value,motivo=g('sk_motivo').value.trim(),fecha=g('sk_fecha').value
+  if(!persona_id||!motivo){toast('Completá persona y motivo');return}
+  const{error}=await sb.from('sanciones').insert({persona_id,tipo,motivo,fecha,lanzamiento_id:state.lanz?state.lanz.id:null,creado_por:me.id})
+  if(error){toast('Error: '+error.message);return}
+  toast('Registrado ✓');renderStrikes()}
+async function loadStrikes(){
+  let q=sb.from('sanciones').select('*').order('fecha',{ascending:false}).limit(500)
+  if(state.lanz)q=q.eq('lanzamiento_id',state.lanz.id)
+  const{data,error}=await q
+  const hist=document.getElementById('sk_hist');if(!hist)return
+  if(error){hist.innerHTML=`<tr><td colspan="7" class="empty">Error: ${esc(error.message)}</td></tr>`;return}
+  const rows=data||[]
+  hist.innerHTML=rows.length?rows.map(r=>`<tr><td class="sub2">${esc(r.fecha||'—')}</td><td class="nm">${esc(nameOf(r.persona_id)||'—')}</td><td class="sub2">${esc(rolOf(r.persona_id)||'—')}</td><td><span class="chip ${r.tipo}">${r.tipo}</span></td><td class="sub2">${esc(r.motivo||'')}</td><td class="sub2">${esc(nameOf(r.creado_por)||'—')}</td><td class="sub2">${fmtDateTime(r.created_at)}</td></tr>`).join(''):`<tr><td colspan="7" class="empty">Sin sanciones registradas en este lanzamiento.</td></tr>`
+  const agg={}
+  rows.forEach(r=>{const a=agg[r.persona_id]=agg[r.persona_id]||{adv:0,strike:0};if(r.tipo==='advertencia')a.adv++;else a.strike++})
+  const personas=Object.keys(agg)
+  const est=document.getElementById('sk_estado');if(!est)return
+  est.innerHTML=personas.length?personas.map(pid=>{const a=agg[pid],advActivas=a.adv%3,strikesEfectivos=a.strike+Math.floor(a.adv/3)
+    const chip=strikesEfectivos>=9?'<span class="chip vetado">Vetado</span>':strikesEfectivos>=6?'<span class="chip strike">−15%</span>':strikesEfectivos>=3?'<span class="chip strike">−5%</span>':'<span class="chip leve">sin cambios</span>'
+    return `<tr><td class="nm">${esc(nameOf(pid)||'—')}</td><td class="sub2">${esc(rolOf(pid)||'—')}</td><td>${advActivas}</td><td>${strikesEfectivos}</td><td>${chip}</td></tr>`}).join(''):'<tr><td colspan="5" class="empty">Nadie tiene sanciones en este lanzamiento 🎉</td></tr>'}
 
 /* ================= GUÍA ================= */
 function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
