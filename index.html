@@ -108,6 +108,16 @@ const CANALES=[['lanzamiento','Lanzamiento'],['funnel','Funnel'],['referido','Re
 const EQUIPOS=[['','— sin equipo —'],['nexus','Nexus'],['puente','Puente']]
 const equipoLabel=e=>e==='nexus'?'Nexus':e==='puente'?'Puente':'—'
 const directorDe=eq=>eq?state.setters.find(p=>p.rol==='director'&&p.equipo===eq):null
+// Supabase no tira error si RLS bloquea un update/delete: simplemente afecta 0 filas.
+// Estos helpers chequean que realmente se haya afectado algo y avisan si no.
+async function delRow(table,id){const{data,error}=await sb.from(table).delete().eq('id',id).select('id')
+  if(error)return{ok:false,msg:error.message}
+  if(!data||!data.length)return{ok:false,msg:'No se borró nada — probablemente no tenés permiso (revisá las políticas RLS en Supabase).'}
+  return{ok:true}}
+async function updRow(table,id,patch){const{data,error}=await sb.from(table).update(patch).eq('id',id).select('id')
+  if(error)return{ok:false,msg:error.message}
+  if(!data||!data.length)return{ok:false,msg:'No se guardó nada — probablemente no tenés permiso (revisá las políticas RLS en Supabase).'}
+  return{ok:true}}
 function srcVentas(q,val){if(!val||val==='all')return q;if(val==='funnel'||val==='referido')return q.eq('canal',val);return q.eq('lanzamiento_id',val)}
 function srcEmbed(q,val){if(!val||val==='all')return q;if(val==='funnel'||val==='referido')return q.eq('ventas.canal',val);return q.eq('ventas.lanzamiento_id',val)}
 function srcOptions(sel,lanzs){return `<option value="all" ${sel==='all'?'selected':''}>Todos</option>`+(lanzs||[]).map(l=>`<option value="${l.id}" ${sel===l.id?'selected':''}>${lanzLabel(l)}</option>`).join('')+`<option value="funnel" ${sel==='funnel'?'selected':''}>Funnel</option><option value="referido" ${sel==='referido'?'selected':''}>Referidos</option>`}
@@ -186,8 +196,10 @@ async function renderPanel(){
   let sq=sb.from('seguimientos').select('*,leads(nombre,contacto)').eq('hecho',false).lte('fecha_programada',today).order('fecha_programada').limit(30)
   if(!isMgr())sq=sq.eq('asesor_id',me.id)
   const{data:segs}=await sq
-  document.getElementById('seg').innerHTML=(segs&&segs.length)?segs.map(s=>`<div class="listrow"><div style="flex:1"><div class="nm">${esc(s.leads?s.leads.nombre:'Lead')}</div><div class="sub2">${esc(s.tipo||'seguimiento')} · ${esc(s.nota||'')}</div></div><div class="sub2">${esc(s.fecha_programada||'')}</div><button class="pg" data-seg="${s.id}">✓ hecho</button></div>`).join(''):`<div class="empty" style="padding:24px">Sin seguimientos pendientes 🎉</div>`
+  document.getElementById('seg').innerHTML=(segs&&segs.length)?segs.map(s=>`<div class="listrow"><div style="flex:1"><div class="nm">${esc(s.leads?s.leads.nombre:'Lead')}</div><div class="sub2">${esc(s.tipo||'seguimiento')} · ${esc(s.nota||'')}</div></div><div class="sub2">${esc(s.fecha_programada||'')}</div><button class="pg" data-seg="${s.id}">✓ hecho</button>${isMgr()?` <button class="pg" data-segedit="${s.id}">Editar</button> <button class="pg" data-segdel="${s.id}">Borrar</button>`:''}</div>`).join(''):`<div class="empty" style="padding:24px">Sin seguimientos pendientes 🎉</div>`
   document.querySelectorAll('[data-seg]').forEach(b=>b.onclick=async()=>{await sb.from('seguimientos').update({hecho:true}).eq('id',b.dataset.seg);toast('Marcado ✓');renderPanel()})
+  document.querySelectorAll('[data-segedit]').forEach(b=>b.onclick=()=>{const s=(segs||[]).find(x=>x.id===b.dataset.segedit);if(s)openSeguimientoModal(s,renderPanel)})
+  document.querySelectorAll('[data-segdel]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Borrar este seguimiento?'))return;const r=await delRow('seguimientos',b.dataset.segdel);if(!r.ok){toast(r.msg);return};toast('Borrado ✓');renderPanel()})
   // cobros resumen (separado por moneda)
   const c=await cobrosResumen(),cmons=Object.keys(c)
   document.getElementById('cob').innerHTML=cmons.length?cmons.map(mon=>{const x=c[mon];return `
@@ -198,6 +210,20 @@ async function renderPanel(){
     <div class="listrow"><span style="flex:1" class="sub2">Vencidas</span><span class="nm" style="color:var(--danger)">${fmtCur(x.vencidas,mon)}</span></div>
     <div class="listrow"><span style="flex:1" class="sub2">Total programa activo</span><span class="nm">${fmtCur(x.total,mon)}</span></div>`}).join(''):`<div class="empty" style="padding:16px">Sin cobros todavía.</div>`
 }
+function openSeguimientoModal(s,onSaved){const ov=document.createElement('div');ov.className='overlay'
+  ov.innerHTML=`<div class="modal"><h2>Editar seguimiento</h2>
+    <div class="field"><label>Tipo</label><input class="inp" id="sg_tipo" value="${esc(s.tipo||'')}"/></div>
+    <div class="field"><label>Nota</label><input class="inp" id="sg_nota" value="${esc(s.nota||'')}"/></div>
+    <div class="field"><label>Fecha programada</label><input class="inp" id="sg_fecha" type="date" value="${s.fecha_programada||''}"/></div>
+    <div class="actions"><button class="btn ghost" id="sg_del">Borrar</button><div class="grow"></div><button class="btn ghost" id="sg_cancel">Cancelar</button><button class="btn primary" id="sg_save">Guardar</button></div></div>`
+  document.body.appendChild(ov);ov.onclick=e=>{if(e.target===ov)ov.remove()}
+  ov.querySelector('#sg_cancel').onclick=()=>ov.remove()
+  ov.querySelector('#sg_save').onclick=async()=>{const g=id=>ov.querySelector('#'+id)
+    const r=await updRow('seguimientos',s.id,{tipo:g('sg_tipo').value.trim()||null,nota:g('sg_nota').value.trim()||null,fecha_programada:g('sg_fecha').value||null})
+    if(!r.ok){toast(r.msg);return};toast('Guardado ✓');ov.remove();if(onSaved)onSaved()}
+  ov.querySelector('#sg_del').onclick=async()=>{if(!confirm('¿Borrar este seguimiento?'))return
+    const r=await delRow('seguimientos',s.id);if(!r.ok){toast(r.msg);return}
+    toast('Borrado ✓');ov.remove();if(onSaved)onSaved()}}
 async function loadFunnel(){const el=document.getElementById('funnel');if(!el)return
   const{count:total}=await sb.from('leads').select('*',{count:'exact',head:true})
   const ci=async es=>{const{count}=await sb.from('leads').select('*',{count:'exact',head:true}).in('estado',es);return count||0}
@@ -318,14 +344,15 @@ async function renderKpis(){const today=new Date().toISOString().slice(0,10)
     <div class="row3"><div class="field"><label>Leves</label><input class="inp" id="k_leves" type="number" value="0"/></div><div class="field"><label>Fluidos</label><input class="inp" id="k_fluidos" type="number" value="0"/></div><div class="field"><label>Potenciales</label><input class="inp" id="k_potenciales" type="number" value="0"/></div></div>
     <div class="row2"><div class="field"><label>Agendas del día</label><input class="inp" id="k_agdia" type="number" value="0"/></div><div class="field"><label>¿Cómo te sentiste el día de hoy?</label><input class="inp" id="k_notas"/></div></div>
     <div class="actions"><div class="grow"></div><button class="btn primary" id="k_save">Guardar KPIs del día</button></div></div>
-    <div class="tablewrap"><table><thead><tr><th>Fecha</th><th>Setter</th><th>Asig.</th><th>Cont.</th><th>Sin resp.</th><th>Leves</th><th>Fluidos</th><th>Potenc.</th><th>Agendas</th></tr></thead><tbody id="khist"><tr><td colspan="9" class="empty">Cargando…</td></tr></tbody></table></div>`
+    <div class="tablewrap"><table><thead><tr><th>Fecha</th><th>Setter</th><th>Asig.</th><th>Cont.</th><th>Sin resp.</th><th>Leves</th><th>Fluidos</th><th>Potenc.</th><th>Agendas</th>${isMgr()?'<th></th>':''}</tr></thead><tbody id="khist"><tr><td colspan="${isMgr()?10:9}" class="empty">Cargando…</td></tr></tbody></table></div>`
   document.getElementById('k_save').onclick=async()=>{const g=id=>document.getElementById(id)
     const p={setter_id:me.id,fecha:g('k_fecha').value,leads_asignados:+g('k_asig').value,leads_contactados:+g('k_cont').value,leads_sin_responder:+g('k_sinresp').value,leves:+g('k_leves').value,fluidos:+g('k_fluidos').value,potenciales:+g('k_potenciales').value,agendas_dia:+g('k_agdia').value,notas:g('k_notas').value.trim()}
     const{error}=await sb.from('kpis_diarios').upsert(p,{onConflict:'setter_id,fecha'});if(error){toast('Error: '+error.message);return};toast('Guardado ✓');loadKhist()}
   loadKhist()}
 async function loadKhist(){const el=document.getElementById('khist');if(!el)return
   let q=sb.from('kpis_diarios').select('*').order('fecha',{ascending:false}).limit(60);if(!isMgr())q=q.eq('setter_id',me.id)
-  const{data}=await q;el.innerHTML=(data&&data.length)?data.map(k=>`<tr><td class="nm">${esc(k.fecha)}</td><td>${esc(nameOf(k.setter_id)||'—')}</td><td>${k.leads_asignados||0}</td><td>${k.leads_contactados||0}</td><td>${k.leads_sin_responder||0}</td><td>${k.leves||0}</td><td>${k.fluidos||0}</td><td>${k.potenciales||0}</td><td>${k.agendas_dia||0}</td></tr>`).join(''):`<tr><td colspan="9" class="empty">Sin registros todavía.</td></tr>`}
+  const{data}=await q;el.innerHTML=(data&&data.length)?data.map(k=>`<tr><td class="nm">${esc(k.fecha)}</td><td>${esc(nameOf(k.setter_id)||'—')}</td><td>${k.leads_asignados||0}</td><td>${k.leads_contactados||0}</td><td>${k.leads_sin_responder||0}</td><td>${k.leves||0}</td><td>${k.fluidos||0}</td><td>${k.potenciales||0}</td><td>${k.agendas_dia||0}</td>${isMgr()?`<td><button class="pg" data-kdel="${k.id}">Borrar</button></td>`:''}</tr>`).join(''):`<tr><td colspan="${isMgr()?10:9}" class="empty">Sin registros todavía.</td></tr>`
+  if(isMgr())document.querySelectorAll('[data-kdel]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Borrar este registro de KPIs?'))return;const r=await delRow('kpis_diarios',b.dataset.kdel);if(!r.ok){toast(r.msg);return};toast('Borrado ✓');loadKhist()})}
 
 /* ================= TRIAGE ================= */
 async function renderTriage(){view().innerHTML=head('CLOSER','Triage')+`<div class="card"><h3>Agendas para triage</h3><p class="cdesc">Leads que agendaron y hay que calificar/preparar antes de la call.</p><div id="tr"></div></div>`
@@ -372,10 +399,22 @@ async function renderGrilla(){view().innerHTML=head('CLOSER','Grilla de reportes
   let q=sb.from('reportes_llamada').select('*,leads(nombre)').order('fecha',{ascending:false}).limit(200);if(!isMgr())q=q.eq('closer_id',me.id)
   const{data}=await q;document.getElementById('grows').innerHTML=(data&&data.length)?data.map(r=>`<tr class="clk" data-id="${r.id}"><td class="nm">${esc(r.leads?r.leads.nombre:'—')}</td><td class="sub2">${fmtDate(r.fecha)}</td><td>${esc((nameOf(r.closer_id)||'').split(' ')[0]||'—')}</td><td>${esc(r.asistio||'—')}</td><td>${esc(r.resultado||'—')}</td><td>${esc(r.programa||'—')}</td><td class="nm">${r.monto_facturado?fmtCur(r.monto_facturado,r.moneda):'—'}</td></tr>`).join(''):`<tr><td colspan="7" class="empty">Sin reportes todavía.</td></tr>`
   document.querySelectorAll('#grows tr[data-id]').forEach(tr=>tr.onclick=()=>{const r=data.find(x=>x.id===tr.dataset.id);openReporteDetail(r)})}
-function openReporteDetail(r){const ov=document.createElement('div');ov.className='overlay'
+function openReporteDetail(r){const ov=document.createElement('div');ov.className='overlay';const mgr=isMgr()
   const f=(l,v)=>v?`<div class="field"><label>${l}</label><div>${esc(v)}</div></div>`:''
-  ov.innerHTML=`<div class="modal"><h2>${esc(r.leads?r.leads.nombre:'Reporte')}</h2>${f('Asistencia',r.asistio)}${f('Resultado',r.resultado)}${f('Programa',r.programa)}${f('Forma de cierre',r.forma_cierre)}${f('Facturado',r.monto_facturado?fmtCur(r.monto_facturado,r.moneda):'')}${f('Situación',r.situacion)}${f('Dolores',r.dolores)}${f('Razones de compra',r.razones_compra)}${f('Objeción principal',r.objecion_principal)}${f('Frases clave',r.frases_clave)}${f('Próxima acción',r.proxima_accion)}${f('Feedback',r.feedback)}<div class="actions"><div class="grow"></div><button class="btn ghost" id="c">Cerrar</button></div></div>`
-  document.body.appendChild(ov);ov.onclick=e=>{if(e.target===ov)ov.remove()};ov.querySelector('#c').onclick=()=>ov.remove()}
+  const fe=(l,id,v)=>`<div class="field"><label>${l}</label><input class="inp" id="${id}" value="${esc(v||'')}"/></div>`
+  const body=mgr?`${fe('Asistencia','rd_asistio',r.asistio)}${fe('Resultado','rd_resultado',r.resultado)}${fe('Programa','rd_programa',r.programa)}${fe('Forma de cierre','rd_forma',r.forma_cierre)}${fe('Facturado','rd_monto',r.monto_facturado)}${fe('Situación','rd_situacion',r.situacion)}${fe('Dolores','rd_dolores',r.dolores)}${fe('Razones de compra','rd_razones',r.razones_compra)}${fe('Objeción principal','rd_objecion',r.objecion_principal)}${fe('Frases clave','rd_frases',r.frases_clave)}${fe('Próxima acción','rd_proxima',r.proxima_accion)}${fe('Feedback','rd_feedback',r.feedback)}`
+    :`${f('Asistencia',r.asistio)}${f('Resultado',r.resultado)}${f('Programa',r.programa)}${f('Forma de cierre',r.forma_cierre)}${f('Facturado',r.monto_facturado?fmtCur(r.monto_facturado,r.moneda):'')}${f('Situación',r.situacion)}${f('Dolores',r.dolores)}${f('Razones de compra',r.razones_compra)}${f('Objeción principal',r.objecion_principal)}${f('Frases clave',r.frases_clave)}${f('Próxima acción',r.proxima_accion)}${f('Feedback',r.feedback)}`
+  ov.innerHTML=`<div class="modal"><h2>${esc(r.leads?r.leads.nombre:'Reporte')}</h2>${body}<div class="actions">${mgr?'<button class="btn ghost" id="rd_del">Borrar</button>':''}<div class="grow"></div><button class="btn ghost" id="c">Cerrar</button>${mgr?'<button class="btn primary" id="rd_save">Guardar</button>':''}</div></div>`
+  document.body.appendChild(ov);ov.onclick=e=>{if(e.target===ov)ov.remove()};ov.querySelector('#c').onclick=()=>ov.remove()
+  if(mgr){
+    ov.querySelector('#rd_save').onclick=async()=>{const g=id=>ov.querySelector('#'+id)
+      const p={asistio:g('rd_asistio').value.trim()||null,resultado:g('rd_resultado').value.trim()||null,programa:g('rd_programa').value.trim()||null,forma_cierre:g('rd_forma').value.trim()||null,monto_facturado:Number(g('rd_monto').value||0)||null,situacion:g('rd_situacion').value.trim()||null,dolores:g('rd_dolores').value.trim()||null,razones_compra:g('rd_razones').value.trim()||null,objecion_principal:g('rd_objecion').value.trim()||null,frases_clave:g('rd_frases').value.trim()||null,proxima_accion:g('rd_proxima').value.trim()||null,feedback:g('rd_feedback').value.trim()||null}
+      const rr=await updRow('reportes_llamada',r.id,p);if(!rr.ok){toast(rr.msg);return}
+      toast('Guardado ✓');ov.remove();renderGrilla()}
+    ov.querySelector('#rd_del').onclick=async()=>{if(!confirm('¿Borrar este reporte? No borra la venta si ya se cerró.'))return
+      const rr=await delRow('reportes_llamada',r.id);if(!rr.ok){toast(rr.msg);return}
+      toast('Borrado ✓');ov.remove();renderGrilla()}
+  }}
 
 /* ================= MARKETING ================= */
 async function renderMarketing(){view().innerHTML=head('MARKETING','Rendimiento de contenido','<button class="btn primary" id="m_new">+ Nuevo punto de contacto</button>')+`<div class="funnel" id="mk"></div>
@@ -424,8 +463,34 @@ async function renderCobros(){view().innerHTML=head('COBROS','Cuotas y seguimien
   const today=new Date().toISOString().slice(0,10);let q=sb.from('cuotas').select('*,leads(nombre),ventas(closer_id)').order('vencimiento',{ascending:true}).limit(300)
   if(cobTab==='pend')q=q.eq('estado','pendiente')
   const{data}=await q;document.getElementById('crows').innerHTML=(data&&data.length)?data.map(c=>{const est=c.estado==='pendiente'&&c.vencimiento&&c.vencimiento<today?'vencido':c.estado
-    return `<tr><td class="nm">${esc(c.programa||'—')}</td><td class="sub2">${esc(c.leads?c.leads.nombre:'—')}</td><td class="sub2">${esc(nameOf(c.ventas&&c.ventas.closer_id)||'—')}</td><td>${esc(c.origen||'')}</td><td class="nm">${fmtCur(c.monto,c.moneda)}</td><td class="sub2">${esc(c.vencimiento||'—')}</td><td><span class="chip ${est}">${est}</span></td><td>${c.estado!=='cobrado'?`<button class="pg" data-cob="${c.id}">Marcar cobrada</button>`:'✓'}</td></tr>`}).join(''):`<tr><td colspan="8" class="empty">Sin cuotas.</td></tr>`
-  document.querySelectorAll('[data-cob]').forEach(b=>b.onclick=async()=>{await sb.from('cuotas').update({estado:'cobrado',cobrado_at:new Date().toISOString()}).eq('id',b.dataset.cob);toast('Cobrada ✓');renderCobros()})}
+    return `<tr><td class="nm">${esc(c.programa||'—')}</td><td class="sub2">${esc(c.leads?c.leads.nombre:'—')}</td><td class="sub2">${esc(nameOf(c.ventas&&c.ventas.closer_id)||'—')}</td><td>${esc(c.origen||'')}</td><td class="nm">${fmtCur(c.monto,c.moneda)}</td><td class="sub2">${esc(c.vencimiento||'—')}</td><td><span class="chip ${est}">${est}</span></td><td>${c.estado!=='cobrado'?`<button class="pg" data-cob="${c.id}">Marcar cobrada</button>`:'✓'}${isMgr()?` <button class="pg" data-cuedit="${c.id}">Editar</button> <button class="pg" data-cudel="${c.id}">Borrar</button>`:''}</td></tr>`}).join(''):`<tr><td colspan="8" class="empty">Sin cuotas.</td></tr>`
+  document.querySelectorAll('[data-cob]').forEach(b=>b.onclick=async()=>{await sb.from('cuotas').update({estado:'cobrado',cobrado_at:new Date().toISOString()}).eq('id',b.dataset.cob);toast('Cobrada ✓');renderCobros()})
+  document.querySelectorAll('[data-cuedit]').forEach(b=>b.onclick=()=>{const c=(data||[]).find(x=>x.id===b.dataset.cuedit);if(c)openCuotaModal(c)})
+  document.querySelectorAll('[data-cudel]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Borrar esta cuota? También se borran sus pagos de comisión asociados.'))return
+    await sb.from('comision_pagos').delete().eq('origen_id',b.dataset.cudel)
+    const r=await delRow('cuotas',b.dataset.cudel);if(!r.ok){toast(r.msg);return}
+    toast('Cuota borrada ✓');renderCobros()})}
+function openCuotaModal(c){const ov=document.createElement('div');ov.className='overlay'
+  ov.innerHTML=`<div class="modal"><h2>Editar cuota</h2>
+    <div class="field"><label>Programa</label><input class="inp" id="cu_prog" value="${esc(c.programa||'')}"/></div>
+    <div class="row3"><div class="field"><label>Origen</label><input class="inp" id="cu_org" value="${esc(c.origen||'')}"/></div>
+    <div class="field"><label>Moneda</label><select id="cu_mon">${MONEDAS.map(m=>`<option ${c.moneda===m?'selected':''}>${m}</option>`).join('')}</select></div>
+    <div class="field"><label>Monto</label><input class="inp" id="cu_monto" type="number" value="${c.monto||0}"/></div></div>
+    <div class="row2"><div class="field"><label>Vencimiento</label><input class="inp" id="cu_venc" type="date" value="${c.vencimiento||''}"/></div>
+    <div class="field"><label>Estado</label><select id="cu_estado"><option value="pendiente" ${c.estado==='pendiente'?'selected':''}>pendiente</option><option value="cobrado" ${c.estado==='cobrado'?'selected':''}>cobrado</option></select></div></div>
+    <div class="field"><label>Billetera</label><input class="inp" id="cu_bill" value="${esc(c.billetera||'')}"/></div>
+    <div class="actions"><button class="btn ghost" id="cu_del">Borrar</button><div class="grow"></div><button class="btn ghost" id="cu_cancel">Cancelar</button><button class="btn primary" id="cu_save">Guardar</button></div></div>`
+  document.body.appendChild(ov);ov.onclick=e=>{if(e.target===ov)ov.remove()}
+  ov.querySelector('#cu_cancel').onclick=()=>ov.remove()
+  ov.querySelector('#cu_save').onclick=async()=>{const g=id=>ov.querySelector('#'+id)
+    const estado=g('cu_estado').value,monto=Number(g('cu_monto').value||0)
+    const p={programa:g('cu_prog').value.trim()||null,origen:g('cu_org').value.trim()||'manual',moneda:g('cu_mon').value,monto,monto_usd:monto,vencimiento:g('cu_venc').value||null,estado,billetera:g('cu_bill').value.trim()||null,cobrado_at:estado==='cobrado'?(c.cobrado_at||new Date().toISOString()):null}
+    const r=await updRow('cuotas',c.id,p);if(!r.ok){toast(r.msg);return}
+    toast('Cuota actualizada ✓');ov.remove();renderCobros()}
+  ov.querySelector('#cu_del').onclick=async()=>{if(!confirm('¿Borrar esta cuota? También se borran sus pagos de comisión asociados.'))return
+    await sb.from('comision_pagos').delete().eq('origen_id',c.id)
+    const r=await delRow('cuotas',c.id);if(!r.ok){toast(r.msg);return}
+    toast('Cuota borrada ✓');ov.remove();renderCobros()}}
 
 /* ================= VENTAS ================= */
 // Formulario de venta reutilizable (mismo en la sección Ventas y en el Reporte de llamada). p = prefijo de ids ('v_' o 'r_')
