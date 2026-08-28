@@ -181,7 +181,7 @@ async function ensureClases(){if(!state.lanz)return
 // null = todos los roles. [] = solo manager/admin.
 const NAV=[
   {g:null,items:[['#/panel','Panel general',null],['#/calendario','Calendario',null],['#/strikes','Strikes',null],['#/guia','Guía',null]]},
-  {g:'Setter',items:[['#/leads','Leads',['setter']],['#/nuevo','Nuevo lead',['setter']],['#/importar','Cargar agenda',['setter']],['#/kpis','KPIs diarios',['setter']]]},
+  {g:'Setter',items:[['#/leads','Leads',['setter']],['#/nuevo','Nuevo lead',['setter']],['#/importar','Cargar agenda',['setter','closer']],['#/kpis','KPIs diarios',['setter']]]},
   {g:'Closer',items:[['#/triage','Triage',['closer']],['#/reporte','Reporte de llamadas',['closer']],['#/grilla','Grilla de reportes',['closer','setter']]]},
   {g:'Ventas',items:[['#/ventas','Ventas',null],['#/senas','Señas',null]]},
   {g:'Marketing',items:[['#/marketing','Rendimiento de contenido',[]]]},
@@ -324,13 +324,14 @@ async function openLeadModal(lead){
   if(lead)g('m_del').onclick=async()=>{if(confirm('¿Eliminar este lead?')){await sb.from('leads').delete().eq('id',lead.id);toast('Eliminado');ov.remove();if(location.hash==='#/leads'){loadLeads();loadFunnel()}}}}
 
 /* ================= IMPORT ================= */
-function renderImport(){view().innerHTML=head('SETTER','Cargar agenda')+`<div class="card"><p class="cdesc">Cargá el lead que agendó llamada, con sus datos completos y cuándo es la agenda.</p>
+function renderImport(){const showAsesor=isMgr()||myProfile.rol==='closer'
+  view().innerHTML=head('EQUIPO','Cargar agenda')+`<div class="card"><p class="cdesc">Cargá el lead que agendó llamada, con sus datos completos y cuándo es la agenda.${myProfile.rol==='closer'?' Si se agendó solo (sin que un setter le haya escrito antes), cargala igual — si después alguien tiene contexto de esa persona, lo puede sumar entrando al lead desde Leads.':''}</p>
     <div class="row2"><div class="field"><label>Nombre *</label><input class="inp" id="ag_nombre"/></div><div class="field"><label>Teléfono</label><input class="inp" id="ag_telefono" type="tel" placeholder="+54 9 ..."/></div></div>
     <div class="row2"><div class="field"><label>Email</label><input class="inp" id="ag_email" type="email" placeholder="lead@mail.com"/></div><div class="field"><label>Fuente</label><select id="ag_fuente">${CANALES.map(c=>`<option value="${c[0]}">${c[1]}</option>`).join('')}</select></div></div>
     <div class="row2"><div class="field"><label>Temperatura</label><select id="ag_temp">${TEMPS.map(t=>`<option>${t}</option>`).join('')}</select></div><div class="field"><label>Fecha de la agenda *</label><input class="inp" id="ag_fecha" type="date"/></div></div>
-    ${isMgr()?`<div class="field"><label>Asesor</label><select id="ag_asesor"><option value="">— sin asignar —</option>${state.setters.map(s=>`<option value="${s.id}">${esc(s.nombre)}</option>`).join('')}</select></div>`:''}
+    ${showAsesor?`<div class="field"><label>Asesor${myProfile.rol==='closer'?' (si sabés qué setter trabajó este lead)':''}</label><select id="ag_asesor"><option value="">— sin asignar —</option>${state.setters.filter(s=>s.rol==='setter').map(s=>`<option value="${s.id}">${esc(s.nombre)}</option>`).join('')}</select></div>`:''}
     </div>
-    <div class="card"><h3>Contexto para el closer</h3><p class="cdesc">Mini reporte para que el closer llegue a la llamada con el terreno preparado.</p>
+    <div class="card"><h3>Contexto para el closer</h3><p class="cdesc">Mini reporte para que el closer llegue a la llamada con el terreno preparado.${myProfile.rol==='closer'?' Si no tenés esta info, dejalo vacío y guardá igual — el setter asignado puede completarlo después desde Leads.':''}</p>
     <div class="field"><label>Situación actual</label><textarea class="inp" id="ag_situacion" rows="2"></textarea></div>
     <div class="field"><label>Objetivos</label><textarea class="inp" id="ag_objetivos" rows="2"></textarea></div>
     <div class="field"><label>Dolores</label><textarea class="inp" id="ag_dolores" rows="2"></textarea></div>
@@ -341,7 +342,8 @@ async function saveAgenda(){const g=id=>document.getElementById(id),btn=g('ag_sa
   if(!nombre){toast('Poné un nombre');return}
   if(!fecha){toast('Elegí la fecha de la agenda');return}
   btn.textContent='Guardando…'
-  const asesorId=isMgr()?(g('ag_asesor').value||null):me.id
+  const showAsesor=isMgr()||myProfile.rol==='closer'
+  const asesorId=showAsesor?(g('ag_asesor').value||null):me.id
   const p={nombre,telefono:telefono||null,email:g('ag_email').value.trim()||null,fuente:g('ag_fuente').value,temperatura:g('ag_temp').value,situacion:g('ag_situacion').value.trim()||null,objetivos:g('ag_objetivos').value.trim()||null,dolor:g('ag_dolores').value.trim()||null,estado:'Agendó',asesor_id:asesorId,lanzamiento_id:state.lanz?state.lanz.id:null,dedup_key:telefono?telefono.toLowerCase().replace(/[^a-z0-9]/g,''):null,updated_at:new Date().toISOString()}
   const{data:lead,error}=await sb.from('leads').upsert(p,{onConflict:'lanzamiento_id,dedup_key'}).select().single()
   if(error){toast('Error: '+error.message);btn.textContent='Guardar agenda';return}
