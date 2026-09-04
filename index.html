@@ -205,9 +205,11 @@ function head(sub,title,actions=''){return `<div class="top"><div><div class="su
 /* ================= PANEL GENERAL ================= */
 async function renderPanel(){
   view().innerHTML=head('DASHBOARD · '+esc((state.lanz&&state.lanz.nombre)||'LANZAMIENTO'),'Panel general')+`<div class="funnel" id="funnel"></div>
+    <div class="card"><h3>Estado del equipo · acumulado</h3><p class="cdesc">Suma de todo lo que los setters cargaron en KPIs diarios hasta la fecha.</p><div class="funnel" id="kpiresumen"></div></div>
     <div class="split"><div class="card" style="margin:0"><h3>Seguimientos de hoy</h3><p class="cdesc">Tu cola priorizada del día.</p><div id="seg"></div></div>
     <div class="card" style="margin:0"><h3>Cobros del lanzamiento</h3><p class="cdesc">Resumen de plata.</p><div id="cob"></div></div></div>`
   loadFunnel()
+  loadKpiResumen()
   // seguimientos hoy
   const today=new Date().toISOString().slice(0,10)
   let sq=sb.from('seguimientos').select('*,leads(nombre,contacto)').eq('hecho',false).lte('fecha_programada',today).order('fecha_programada').limit(30)
@@ -248,6 +250,16 @@ async function loadFunnel(){const el=document.getElementById('funnel');if(!el)re
   const t=total||0,pc=n=>t?((n/t*100).toFixed(1).replace('.',',')+'%'):'0%',w=n=>t?Math.round(n/t*100):0
   const cells=[['Leads totales',t,'100%',100],['Confirmaron clase',conf,pc(conf),w(conf)],['Asistieron',asis,pc(asis),w(asis)],['Agendaron call',agen,pc(agen),w(agen)],['Cerraron',cerr,pc(cerr),w(cerr)]]
   el.innerHTML=cells.map(([l,n,p,wd])=>`<div class="fcell"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/></svg><div class="n">${num(n)}</div><div class="l">${l}</div><div class="pct">${p}</div><div class="track"><i style="width:${wd}%"></i></div></div>`).join('')}
+async function loadKpiResumen(){const el=document.getElementById('kpiresumen');if(!el)return
+  const{data}=await sb.from('kpis_diarios').select('setter_id,fecha,leves,fluidos,potenciales,leads_sin_responder').limit(10000)
+  const ultimos={}
+  ;(data||[]).forEach(x=>{const s=x.setter_id;if(!s)return
+    if(!ultimos[s]||x.fecha>ultimos[s].fecha)ultimos[s]=x})
+  const filas=Object.values(ultimos)
+  const sum=k=>filas.reduce((a,x)=>a+Number(x[k]||0),0)
+  const cells=[['Sin responder',sum('leads_sin_responder')],['Leves',sum('leves')],['Fluidos',sum('fluidos')],['Potenciales',sum('potenciales')]]
+  const t=cells.reduce((a,[,n])=>a+n,0),pc=n=>t?Math.round(n/t*100):0
+  el.innerHTML=(data&&data.length)?cells.map(([l,n])=>`<div class="fcell"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/></svg><div class="n">${num(n)}</div><div class="l">${l}</div><div class="pct">${t?pc(n)+'%':'—'}</div><div class="track"><i style="width:${pc(n)}%"></i></div></div>`).join(''):`<div class="empty" style="padding:16px">Todavía no se cargó ningún KPI.</div>`}
 async function cobrosResumen(){const today=new Date().toISOString().slice(0,10)
   // Devuelve un objeto por moneda — cada moneda se trackea por separado, sin conversión a USD.
   const{data}=await sb.from('cuotas').select('monto,moneda,estado,vencimiento,origen,venta_id').limit(10000)
@@ -1062,6 +1074,7 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
     <a onclick="document.getElementById('g_set').scrollIntoView({behavior:'smooth'})">Setter</a>
     <a onclick="document.getElementById('g_clo').scrollIntoView({behavior:'smooth'})">Closer</a>
     <a onclick="document.getElementById('g_cob').scrollIntoView({behavior:'smooth'})">Ventas / Cobros</a>
+    <a onclick="document.getElementById('g_str').scrollIntoView({behavior:'smooth'})">Strikes</a>
     <a onclick="document.getElementById('g_man').scrollIntoView({behavior:'smooth'})">Manager</a>
     <a onclick="document.getElementById('g_flu').scrollIntoView({behavior:'smooth'})">Flujos</a>
     <a onclick="document.getElementById('g_glo').scrollIntoView({behavior:'smooth'})">Glosario</a>
@@ -1071,7 +1084,8 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
   <div class="gcard"><ol class="steps">
     <li><b>Entrá al link del CRM</b> y creá tu cuenta con tu email.<div class="d">Primera vez: "Crear una" → email + contraseña + tu nombre.</div></li>
     <li><b>Avisá al manager</b> que te registraste, para que te asigne tu <b>rol</b>.</li>
-    <li><b>Menú izquierdo</b> = secciones. <b>Arriba a la derecha</b> están los botones de acción (ej: + Nuevo lead).</li>
+    <li><b>Menú izquierdo</b> = secciones. Se filtra según tu rol: cada uno ve las pantallas de carga que le corresponden (setter no ve Triage, closer no ve KPIs diarios, etc.), pero <b>Ventas, Señas, Cuotas, Facturación, Comisiones y Strikes se ven completos para todo el equipo</b> — la plata y el estado del equipo no se esconden.</li>
+    <li><b>Arriba a la derecha</b> están los botones de acción (ej: + Nuevo lead).</li>
   </ol>
   <div class="note">Regla de oro: <b>cargá todo en el momento</b> (lead, llamada, venta, cobro). El CRM sirve solo si los datos están al día.</div></div>
 
@@ -1080,12 +1094,13 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
   <p class="lead2">Cargar leads, contactarlos, hacerlos avanzar y agendar la llamada con el closer.</p>
   <ol class="steps">
     <li><b>Panel general</b> → "Seguimientos de hoy": tu cola del día.</li>
-    <li><b>Leads → + Nuevo lead</b>: nombre, contacto, email, teléfono, fuente y temperatura.</li>
+    <li><b>Leads → + Nuevo lead</b>: nombre, teléfono, email, fuente y temperatura.</li>
     <li><b>Cargar agenda</b>: cuando un lead agenda llamada, cargá nombre, teléfono, email, fuente (Lanzamiento / Funnel / Referido) y temperatura, junto con la fecha de la agenda — queda reflejado en el Calendario.</li>
     <li>En la misma <b>Cargar agenda</b>, completá el bloque <b>"Contexto para el closer"</b>: situación actual, objetivos y dolores — es el mini reporte que el closer va a ver en Triage antes de la llamada.</li>
+    <li><b>Mis agendas</b>: lista aparte con las agendas que tenés asignadas — incluye las tuyas y las que un closer cargó porque el lead se agendó solo (sin que vos le hayas escrito antes). Cada una muestra un cartel <b>"sin contexto"</b> o <b>"con contexto"</b>; entrá a las que digan "sin contexto" y completá Situación/Objetivos/Dolores apenas puedas.</li>
     <li>Abrí el lead y <b>cambiá el Estado</b> a medida que avanza.</li>
     <li>Cargá un <b>próximo seguimiento</b> (fecha + nota) dentro del lead.</li>
-    <li><b>KPIs diarios</b> → cargá: leads asignados, contactados, sin responder, leves, fluidos, potenciales y agendas del día.</li>
+    <li><b>KPIs diarios</b> → cargá: leads asignados, contactados, sin responder, leves, fluidos, potenciales, agendas del día, y "¿Cómo te sentiste el día de hoy?" (un mini autoreporte, no un dato duro).</li>
   </ol>
   <div class="flow"><span class="st">Nuevo</span><span class="ar">→</span><span class="st">Contactado</span><span class="ar">→</span><span class="st">Confirmó clase</span><span class="ar">→</span><span class="st">Asistió</span><span class="ar">→</span><span class="st">Agendó</span></div></div>
 
@@ -1094,20 +1109,35 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
   <p class="lead2">Preparar la llamada, tomarla y cargar el resultado (y la venta si cerró).</p>
   <ol class="steps">
     <li><b>Triage</b> → leads que agendaron y hay que calificar antes de la call. Abrí el lead para ver el <b>contexto que cargó el setter</b> (situación, objetivos, dolores) antes de entrar a la llamada.</li>
+    <li><b>Cargar agenda</b>: si un lead se agendó solo (nadie le escribió antes), cargalo igual desde acá aunque no tengas contexto — dejá esos campos vacíos. Si sabés qué setter venía trabajando a esa persona, asignáselo en <b>Asesor</b> para que le aparezca en su lista de "Mis agendas" y lo pueda completar después.</li>
     <li><b>Reporte de llamadas</b> → elegí el lead, si se presentó y el Resultado (Cerró / Seguimiento / No cierre).</li>
     <li>Completá <b>situación, dolores, razones de compra, objeciones y frases clave</b>.</li>
     <li><b>Si cerró:</b> completá el bloque <b>Venta</b> (ticket, pagó, cuotas, comprobante, setter y closer).</li>
     <li>Si no cerró: cargá <b>motivo</b> y <b>próximo seguimiento</b>.</li>
+    <li><b>Grilla de reportes</b>: historial de todas tus llamadas cargadas, con resultado y facturado.</li>
   </ol>
   <div class="note">El <b>closer</b> y el <b>setter</b> que elijas en la venta definen a quién le corresponde la <b>comisión</b>.</div></div>
 
   <h2 id="g_cob">Ventas, Señas y Cobros</h2>
   <div class="gcard role cobros"><span class="tag cobros">Ventas / Cobros</span><h3>Cargar plata y seguirla</h3>
   <ol class="steps">
-    <li><b>Ventas → + Cargar venta</b>: venta directa. Elegí el <b>Canal</b> (Lanzamiento / Funnel / Referido) para no mezclar y la <b>Moneda</b> (USD / ARS / EUR) — cada moneda se trackea por separado, sin convertir a dólares.</li>
+    <li><b>Ventas → + Cargar venta</b>: venta directa. Elegí el <b>Canal</b> (Lanzamiento / Funnel / Referido) para no mezclar y la <b>Moneda</b> (USD / ARS / EUR) — cada moneda se trackea por separado, sin convertir a dólares ni sumarse con otra.</li>
     <li><b>Señas → + Registrar seña</b>: reserva del cliente. No cuenta hasta que la venta pague su 1ª cuota.</li>
     <li><b>Cobros → Cuotas</b>: cuando entra una cuota, tocá <b>"Marcar cobrada"</b>.</li>
-    <li><b>Facturación</b>: facturación y cash por moneda (ARS/USD), total unificado y cash por billetera.</li>
+    <li><b>Facturación</b>: facturación y cash <b>por moneda</b> (un bloque separado por cada una) y cash por billetera. No hay un total mezclado entre monedas.</li>
+    <li>Ventas, Señas, Cuotas, Reportes de llamada y KPIs diarios muestran una columna <b>"Cargado"</b> con la fecha y hora exacta en que se guardó el registro — es automática, nadie la carga a mano.</li>
+  </ol></div>
+
+  <h2 id="g_str">Strikes</h2>
+  <div class="gcard"><h3>Advertencias, strikes y consecuencias</h3>
+  <p class="lead2">Página pública — todo el equipo la ve. Sirve para llevar un registro claro de faltas leves y graves durante el lanzamiento.</p>
+  <ol class="steps">
+    <li>Dos niveles: <b>advertencia</b> (falta leve) y <b>strike</b> (falta grave). Cada <b>3 advertencias se convierten solas en 1 strike</b>.</li>
+    <li>Escalada de comisión: <b>3 strikes → −5%</b>, <b>6 strikes → −15%</b>, <b>9 strikes → vetado del equipo</b> por lo que resta del lanzamiento.</li>
+    <li>Solo <b>director, manager o admin</b> pueden registrar una sanción: elegís la persona, si es advertencia o strike, la fecha y el motivo. Quién la cargó queda guardado solo, no se elige a mano.</li>
+    <li>Todo el equipo ve el <b>Estado por persona</b> (advertencias activas, strikes efectivos y consecuencia actual) y el <b>Historial</b> completo con fecha, motivo y quién la registró.</li>
+    <li>El ajuste real del % de comisión o la baja del equipo <b>no lo hace el sistema solo</b> — la página te muestra el estado, pero el manager lo aplica a mano en Comisiones.</li>
+    <li>Todo se resetea a cero con cada lanzamiento nuevo.</li>
   </ol></div>
 
   <h2 id="g_man">Rol Manager</h2>
@@ -1117,6 +1147,8 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
     <li><b>Comisiones → Equipo · roles y comisiones</b>: rol + % setter / % closer de cada uno.<div class="d">Si el % está en 0, esa persona no genera comisión.</div></li>
     <li><b>A pagar por origen</b>: comisiones a pagar por cada lanzamiento / funnel / referidos.</li>
     <li>Tocá el <b>nombre</b> de una persona → su detalle → marcá comisiones <b>pagadas</b> línea por línea, o cargá un <b>pago manual</b> (monto suelto, parcial o total) que se resta directo del pendiente.</li>
+    <li>Sos el único que puede <b>editar y borrar</b> Cuotas, Seguimientos, Reportes de llamada y KPIs diarios (botones "Editar"/"Borrar" en cada tabla, solo visibles para vos). Leads, Ventas y Señas ya se podían editar/borrar desde antes.</li>
+    <li><b>Strikes</b>: junto con los directores, sos quien registra advertencias y strikes del equipo (ver sección aparte).</li>
   </ol></div>
 
   <h2 id="g_flu">Flujos rápidos</h2>
@@ -1147,6 +1179,9 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
       <li>Abajo del detalle, en <b>"Pagos manuales"</b>: cargá el monto (y una nota si querés) → <b>Registrar pago</b>.</li>
       <li>El <b>Pendiente</b> de esa persona baja automáticamente ese monto. Podés cargar varios pagos hasta llegar a $0, o quitar uno si te equivocaste.</li>
     </ol></div>
+  <div class="gcard"><h3>📅 Lead que se agendó solo (sin setter)</h3>
+    <div class="flow"><span class="st">Closer: Cargar agenda</span><span class="ar">→</span><span class="st">asigna Asesor (si sabe cuál)</span><span class="ar">→</span><span class="st">Setter: Mis agendas</span><span class="ar">→</span><span class="st">completa contexto</span></div>
+    <p class="lead2" style="margin-top:8px">El closer no pierde la agenda aunque no tenga contexto: la carga igual, vacía si hace falta. El setter la ve en "Mis agendas" marcada como <b style="color:var(--ink)">"sin contexto"</b> y la completa cuando puede, antes de la llamada.</p></div>
   <div class="gcard"><h3>✏️ Corregir algo mal cargado</h3>
     <div class="flow"><span class="st">Ventas / Señas</span><span class="ar">→</span><span class="st">clic en la fila</span><span class="ar">→</span><span class="st">editar o eliminar</span></div>
     <p class="lead2" style="margin-top:8px">Podés cambiar montos, moneda, cuotas, reemplazar comprobante o eliminar. <b style="color:var(--ink)">Ojo:</b> editar una venta regenera sus cuotas.</p></div>
@@ -1167,6 +1202,10 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
     <tr><td><b>Contexto para el closer</b></td><td class="m">Situación, objetivos y dolores del lead que carga el setter al agendar — el closer lo ve en Triage.</td></tr>
     <tr><td><b>Pago manual</b></td><td class="m">Monto suelto que registrás para una persona y se resta directo de su comisión pendiente, sin marcar líneas de venta.</td></tr>
     <tr><td><b>Leve / Fluido / Potencial</b></td><td class="m">Temperatura del lead: leve = sin relación, fluido = ya hay charla real, potencial = interés directo en sumarse.</td></tr>
+    <tr><td><b>Asesor</b></td><td class="m">El setter asignado a un lead. Un closer puede cargar una agenda y asignarle un asesor sin ser él mismo ese asesor.</td></tr>
+    <tr><td><b>Cargado</b></td><td class="m">Fecha y hora exacta en que se guardó un registro en el sistema — automática, distinta de la "Fecha" de negocio (cuándo fue la venta, la llamada, etc.).</td></tr>
+    <tr><td><b>Advertencia</b></td><td class="m">Falta leve. Cada 3 se convierten solas en 1 strike.</td></tr>
+    <tr><td><b>Strike</b></td><td class="m">Falta grave (o el resultado de acumular 3 advertencias). A los 3 strikes se descuenta comisión; a los 9, vetado del equipo.</td></tr>
   </table></div>
 </div>`}
 
