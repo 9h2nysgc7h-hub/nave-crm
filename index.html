@@ -181,7 +181,7 @@ async function ensureClases(){if(!state.lanz)return
 // null = todos los roles. [] = solo manager/admin.
 const NAV=[
   {g:null,items:[['#/panel','Panel general',null],['#/calendario','Calendario',null],['#/strikes','Strikes',null],['#/guia','Guía',null]]},
-  {g:'Setter',items:[['#/leads','Leads',['setter']],['#/nuevo','Nuevo lead',['setter']],['#/importar','Cargar agenda',['setter','closer']],['#/misagendas','Mis agendas',['setter']],['#/kpis','KPIs diarios',['setter']]]},
+  {g:'Setter',items:[['#/leads','Leads',['setter']],['#/nuevo','Nuevo lead',['setter']],['#/importar','Cargar agenda',['setter','closer']],['#/basecsv','Mi base',['setter']],['#/misagendas','Mis agendas',['setter']],['#/kpis','KPIs diarios',['setter']]]},
   {g:'Closer',items:[['#/triage','Triage',['closer']],['#/reporte','Reporte de llamadas',['closer']],['#/grilla','Grilla de reportes',['closer','setter']]]},
   {g:'Ventas',items:[['#/ventas','Ventas',null],['#/senas','Señas',null]]},
   {g:'Marketing',items:[['#/marketing','Rendimiento de contenido',[]]]},
@@ -198,7 +198,7 @@ function renderShell(){
   document.getElementById('so').onclick=()=>sb.auth.signOut();window.onhashchange=route}
 function setActive(){root.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('on',a.dataset.h===location.hash))}
 function route(){setActive();const h=location.hash
-  const map={'#/panel':renderPanel,'#/calendario':renderCalendario,'#/guia':renderGuia,'#/strikes':renderStrikes,'#/leads':renderLeads,'#/nuevo':()=>openLeadModal(),'#/importar':renderImport,'#/misagendas':renderMisAgendas,'#/kpis':renderKpis,'#/triage':renderTriage,'#/reporte':renderReporte,'#/grilla':renderGrilla,'#/ventas':renderVentas,'#/senas':renderSenas,'#/comisiones':renderComisiones,'#/facturacion':renderFacturacion,'#/marketing':renderMarketing,'#/cobros':renderCobros}
+  const map={'#/panel':renderPanel,'#/calendario':renderCalendario,'#/guia':renderGuia,'#/strikes':renderStrikes,'#/leads':renderLeads,'#/nuevo':()=>openLeadModal(),'#/importar':renderImport,'#/basecsv':renderImportarBase,'#/misagendas':renderMisAgendas,'#/kpis':renderKpis,'#/triage':renderTriage,'#/reporte':renderReporte,'#/grilla':renderGrilla,'#/ventas':renderVentas,'#/senas':renderSenas,'#/comisiones':renderComisiones,'#/facturacion':renderFacturacion,'#/marketing':renderMarketing,'#/cobros':renderCobros}
   ;(map[h]||renderPanel)()}
 function head(sub,title,actions=''){return `<div class="top"><div><div class="sub">${sub}</div><h1>${title}</h1></div><div class="grow"></div>${actions}</div>`}
 
@@ -373,6 +373,88 @@ async function saveAgenda(){const g=id=>document.getElementById(id),btn=g('ag_sa
   if(error){toast('Error: '+error.message);btn.textContent='Guardar agenda';return}
   await sb.from('seguimientos').insert({lead_id:lead.id,asesor_id:asesorId||me.id,fecha_programada:fecha,tipo:'agenda',nota:'Llamada agendada'})
   toast('Agenda guardada ✓');location.hash='#/calendario'}
+/* ================= MI BASE (CSV + lista privada) ================= */
+function renderImportarBase(){
+  view().innerHTML=head('SETTER · PRIVADO','Mi base')+`
+    <div class="card">
+      <p class="cdesc">Subí un CSV de tu base (necesita al menos una columna de nombre y una de teléfono). Todo lo que cargues queda asignado a vos, y solo vos y los managers pueden ver esta lista — al resto del equipo no le aparece. Si un teléfono ya existe como lead en el CRM, esa fila se omite — no se pisa ni se duplica nada.</p>
+      <div class="field"><label>Archivo CSV</label><input class="inp" type="file" id="csv_file" accept=".csv,text/csv"/></div>
+      <div class="actions"><div class="grow"></div><button class="btn primary" id="csv_go">Importar</button></div>
+      <div id="csv_result" style="margin-top:14px"></div>
+    </div>
+    <div class="card">
+      <h3>Mis contactos cargados</h3>
+      <p class="cdesc">Solo lo que subiste vos. No aparece en la lista general de Leads del resto del equipo.</p>
+      <div class="tb"><input class="inp search" id="mb_q" placeholder="Buscar nombre, @ o teléfono…"/></div>
+      <div class="tablewrap"><table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Temp.</th><th>Estado</th><th>Actualizado</th></tr></thead><tbody id="mb_rows"><tr><td colspan="5" class="empty">Cargando…</td></tr></tbody></table></div>
+    </div>`
+  document.getElementById('csv_go').onclick=importarBaseCSV
+  let mbt;document.getElementById('mb_q').oninput=e=>{clearTimeout(mbt);mbt=setTimeout(()=>loadMiBase(e.target.value.trim()),300)}
+  loadMiBase('')}
+async function loadMiBase(q){
+  const rows=document.getElementById('mb_rows');if(!rows)return
+  let query=sb.from('leads').select('*').eq('asesor_id',me.id).eq('fuente','base propia').order('updated_at',{ascending:false}).limit(200)
+  if(q)query=query.or(`nombre.ilike.%${q}%,contacto.ilike.%${q}%,telefono.ilike.%${q}%`)
+  const{data,error}=await query
+  if(error){rows.innerHTML=`<tr><td colspan="5" class="empty">Error: ${esc(error.message)}</td></tr>`;return}
+  rows.innerHTML=(data&&data.length)?data.map(l=>`<tr class="clk" data-id="${l.id}"><td class="nm">${esc(l.nombre)||'(sin nombre)'}</td><td class="sub2">${esc(l.telefono||l.contacto||'—')}</td><td><span class="chip ${l.temperatura||'potencial'}">${esc(l.temperatura||'potencial')}</span></td><td><span class="estado"><span class="dot"></span>${esc(l.estado||'Nuevo')}</span></td><td class="sub2">${fmtDate(l.updated_at)}</td></tr>`).join(''):`<tr><td colspan="5" class="empty">Todavía no subiste tu base.</td></tr>`
+  rows.querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=async()=>{const{data:l}=await sb.from('leads').select('*').eq('id',tr.dataset.id).single();openLeadModal(l)})}
+function parseCSV(text){
+  const rows=[];let row=[],field='',inQuotes=false
+  for(let i=0;i<text.length;i++){const c=text[i]
+    if(inQuotes){if(c==='"'){if(text[i+1]==='"'){field+='"';i++}else inQuotes=false}else field+=c}
+    else{if(c==='"')inQuotes=true
+      else if(c===','){row.push(field);field=''}
+      else if(c==='\r'){}
+      else if(c==='\n'){row.push(field);rows.push(row);row=[];field=''}
+      else field+=c}}
+  if(field!==''||row.length){row.push(field);rows.push(row)}
+  return rows.filter(r=>!(r.length===1&&r[0]===''))}
+function normHeader(s){return (s||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim()}
+async function importarBaseCSV(){
+  const inp=document.getElementById('csv_file'),out=document.getElementById('csv_result'),btn=document.getElementById('csv_go')
+  const file=inp.files&&inp.files[0]
+  if(!file){toast('Elegí un archivo CSV');return}
+  btn.textContent='Procesando…';btn.disabled=true
+  try{
+    const text=await file.text(),rows=parseCSV(text)
+    if(!rows.length){out.innerHTML='<div class="empty">El archivo está vacío.</div>';return}
+    const headers=rows[0].map(normHeader)
+    const iNombre=headers.findIndex(h=>['nombre','name'].includes(h))
+    const iTel=headers.findIndex(h=>['telefono','phone','celular','whatsapp','numero','tel'].includes(h))
+    const iContacto=headers.findIndex(h=>['contacto','usuario','instagram','ig','handle'].includes(h))
+    const iEmail=headers.findIndex(h=>['email','mail','correo'].includes(h))
+    const iFuente=headers.findIndex(h=>['fuente','origen','source'].includes(h))
+    if(iNombre===-1){out.innerHTML='<div class="empty">No encontré una columna de "nombre" en el CSV.</div>';return}
+    if(iTel===-1){out.innerHTML='<div class="empty">No encontré una columna de "teléfono" en el CSV — sin eso no se puede evitar cargar duplicados.</div>';return}
+    const lanzamiento_id=state.lanz?state.lanz.id:null
+    const candidatos=[];let vacios=0
+    for(let r=1;r<rows.length;r++){const row=rows[r];if(!row||!row.length)continue
+      const nombre=(row[iNombre]||'').trim()
+      if(!nombre){vacios++;continue}
+      const telefono=(row[iTel]||'').trim()
+      const contacto=iContacto>-1?(row[iContacto]||'').trim():''
+      const email=iEmail>-1?(row[iEmail]||'').trim():''
+      const fuente=iFuente>-1?(row[iFuente]||'').trim():'base propia'
+      const dedup_key=telefono?telefono.toLowerCase().replace(/[^a-z0-9]/g,''):null
+      candidatos.push({nombre,telefono:telefono||null,contacto:contacto||null,email:email||null,fuente:fuente||'base propia',dedup_key,estado:'Nuevo',temperatura:'potencial',asesor_id:me.id,lanzamiento_id,updated_at:new Date().toISOString()})}
+    if(!candidatos.length){out.innerHTML='<div class="empty">No hay filas válidas para cargar.</div>';return}
+    const{data:todos}=await sb.from('leads').select('telefono,dedup_key').limit(20000)
+    const existentes=new Set()
+    ;(todos||[]).forEach(l=>{if(l.dedup_key)existentes.add(l.dedup_key)
+      const t=l.telefono?l.telefono.toLowerCase().replace(/[^a-z0-9]/g,''):null
+      if(t)existentes.add(t)})
+    const nuevos=candidatos.filter(c=>!c.dedup_key||!existentes.has(c.dedup_key))
+    const omitidos=candidatos.length-nuevos.length
+    let cargados=0
+    for(let i=0;i<nuevos.length;i+=300){const lote=nuevos.slice(i,i+300)
+      const{error}=await sb.from('leads').insert(lote)
+      if(error){out.innerHTML=`<div class="empty">Error cargando: ${esc(error.message)}</div>`;return}
+      cargados+=lote.length}
+    out.innerHTML=`<div class="empty" style="color:var(--ink)">✓ ${cargados} leads cargados a tu base${omitidos?`, ${omitidos} omitidos (teléfono ya existía)`:''}${vacios?`, ${vacios} filas sin nombre ignoradas`:''}.</div>`
+    inp.value=''
+  }catch(e){out.innerHTML=`<div class="empty">Error: ${esc(e.message||String(e))}</div>`}
+  finally{btn.textContent='Importar';btn.disabled=false}}
 async function autoRepartir(){if(!confirm('¿Repartir los leads SIN asignar entre los asesores activos?'))return
   const{data:un}=await sb.from('leads').select('id').is('asesor_id',null).limit(5000);if(!un||!un.length){toast('No hay leads sin asignar');return}
   const st=state.setters;if(!st.length){toast('No hay asesores activos');return}
@@ -427,7 +509,7 @@ async function renderReporte(){
     <div class="row2"><div class="field"><label>Objeción principal</label><input class="inp" id="r_o1"/></div><div class="field"><label>Objeción secundaria</label><input class="inp" id="r_o2"/></div></div>
     <div class="field"><label>Frases clave del lead</label><textarea id="r_fr" rows="2"></textarea></div>
     <div class="row2"><div class="field"><label>Motivo de no cierre</label><input class="inp" id="r_mnc"/></div><div class="field"><label>Próximo seguimiento</label><input class="inp" id="r_ps" type="date"/></div></div>
-    <div class="row2"><div class="field"><label>Total proyectado a cobrar</label><input class="inp" id="r_tp" type="number"/></div><div class="field"><label>Próxima acción</label><input class="inp" id="r_pa"/></div></div>
+    <div class="field"><label>Próxima acción</label><input class="inp" id="r_pa"/></div>
     <div class="field"><label>Feedback / notas</label><textarea id="r_fb" rows="2"></textarea></div>
     <div class="actions"><div class="grow"></div><button class="btn primary" id="r_save">Guardar reporte</button></div></div>`
   wireVentaForm('r_')
@@ -440,7 +522,7 @@ async function saveReporte(){const g=id=>document.getElementById(id)
   if(!leadId&&g('r_nuevo').value.trim()){const{data}=await sb.from('leads').insert({nombre:g('r_nuevo').value.trim(),estado:'Agendó',lanzamiento_id:state.lanz?state.lanz.id:null}).select().single();leadId=data.id}
   const resultado=g('r_res').value||null
   const vf=readVentaForm('r_'),rate=1 // cada moneda se trackea por separado, sin conversión
-  const rep={lead_id:leadId,closer_id:me.id,asistio:g('r_asis').value,resultado,fathom_link:g('r_fathom').value.trim(),programa:vf.programa,forma_cierre:vf.forma,moneda:vf.moneda,monto_facturado:vf.ticket,monto_upfront:vf.pago,cotizacion:rate,billetera:vf.billetera,situacion:g('r_sit').value.trim(),dolores:g('r_dol').value.trim(),razones_compra:g('r_raz').value.trim(),objecion_principal:g('r_o1').value.trim(),objecion_secundaria:g('r_o2').value.trim(),frases_clave:g('r_fr').value.trim(),motivo_no_cierre:g('r_mnc').value.trim(),proximo_seguimiento:g('r_ps').value||null,total_proyectado:Number(g('r_tp').value||0),proxima_accion:g('r_pa').value.trim(),feedback:g('r_fb').value.trim()}
+  const rep={lead_id:leadId,closer_id:me.id,asistio:g('r_asis').value,resultado,fathom_link:g('r_fathom').value.trim(),programa:vf.programa,forma_cierre:vf.forma,moneda:vf.moneda,monto_facturado:vf.ticket,monto_upfront:vf.pago,cotizacion:rate,billetera:vf.billetera,situacion:g('r_sit').value.trim(),dolores:g('r_dol').value.trim(),razones_compra:g('r_raz').value.trim(),objecion_principal:g('r_o1').value.trim(),objecion_secundaria:g('r_o2').value.trim(),frases_clave:g('r_fr').value.trim(),motivo_no_cierre:g('r_mnc').value.trim(),proximo_seguimiento:g('r_ps').value||null,proxima_accion:g('r_pa').value.trim(),feedback:g('r_fb').value.trim()}
   if(resultado==='Cerró'&&!vf.ticket){toast('Cerró: cargá el ticket de la venta');return}
   const{data:repRow,error}=await sb.from('reportes_llamada').insert(rep).select().single();if(error){toast('Error: '+error.message);return}
   if(leadId&&resultado==='Cerró'){
@@ -948,7 +1030,8 @@ async function renderComConfig(){const{data:profs}=await sb.from('profiles').sel
 /* ================= CALENDARIO ================= */
 async function renderCalendario(){view().innerHTML=head('AGENDA','Calendario')+`<div class="card"><div class="agenda" id="ag"></div></div>`
   const{data:clases}=await sb.from('clases').select('*').order('fecha')
-  let sq=sb.from('seguimientos').select('*,leads(nombre)').eq('hecho',false).order('fecha_programada');if(!isMgr())sq=sq.eq('asesor_id',me.id)
+  let sq=sb.from('seguimientos').select('*,leads(nombre)').eq('hecho',false).order('fecha_programada')
+  if(!isMgr())sq=myProfile.rol==='closer'?sq.eq('closer_id',me.id):sq.eq('asesor_id',me.id)
   const{data:segs}=await sq
   const items=[]
   ;(clases||[]).forEach(c=>c.fecha&&items.push({d:c.fecha.slice(0,10),tg:'CLASE',t:'Clase '+c.numero+(c.titulo?' — '+c.titulo:'')}))
