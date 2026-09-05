@@ -55,6 +55,17 @@ function normalizarClave(s) {
   return s ? s.toLowerCase().replace(/[^a-z0-9]/g, '') : null
 }
 
+// El teléfono viene como respuesta a una pregunta del formulario de Calendly
+// (no como recordatorio SMS), así que lo buscamos por palabra clave en la
+// pregunta. Si en algún momento activan el recordatorio SMS, ese campo
+// (text_reminder_number) tiene prioridad porque es más confiable.
+function extraerTelefono(p) {
+  if (p.text_reminder_number) return p.text_reminder_number
+  const qas = p.questions_and_answers || []
+  const match = qas.find((qa) => /tel[eé]fono|whatsapp|celular|n[uú]mero|phone|cel\b/i.test(qa.question || ''))
+  return match ? match.answer : null
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).send('Method not allowed')
 
@@ -79,7 +90,7 @@ module.exports = async function handler(req, res) {
     const p = body.payload
     const nombre = p.name || 'Sin nombre'
     const email = p.email || null
-    const telefono = p.text_reminder_number || null
+    const telefono = extraerTelefono(p)
     const utmSetter = (p.tracking && p.tracking.utm_source || '').trim().toLowerCase()
     const fechaAgenda = p.scheduled_event && p.scheduled_event.start_time
       ? p.scheduled_event.start_time.slice(0, 10)
