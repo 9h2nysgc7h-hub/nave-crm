@@ -377,7 +377,7 @@ async function saveAgenda(){const g=id=>document.getElementById(id),btn=g('ag_sa
 function renderImportarBase(){
   view().innerHTML=head('SETTER · PRIVADO','Mi base')+`
     <div class="card">
-      <p class="cdesc">Subí un CSV de tu base (necesita al menos una columna de nombre y una de teléfono). Todo lo que cargues queda asignado a vos, y solo vos y los managers pueden ver esta lista — al resto del equipo no le aparece. Si un teléfono ya existe como lead en el CRM, esa fila se omite — no se pisa ni se duplica nada.</p>
+      <p class="cdesc">Subí un CSV de tu base (necesita una columna de teléfono — el nombre es opcional, si no lo tenés no pasa nada). Todo lo que cargues queda asignado a vos, y solo vos y los managers pueden ver esta lista — al resto del equipo no le aparece. Si un teléfono ya existe como lead en el CRM, esa fila se omite — no se pisa ni se duplica nada.</p>
       <div class="field"><label>Archivo CSV</label><input class="inp" type="file" id="csv_file" accept=".csv,text/csv"/></div>
       <div class="actions"><div class="grow"></div><button class="btn primary" id="csv_go">Importar</button></div>
       <div id="csv_result" style="margin-top:14px"></div>
@@ -425,14 +425,13 @@ async function importarBaseCSV(){
     const iContacto=headers.findIndex(h=>['contacto','usuario','instagram','ig','handle'].includes(h))
     const iEmail=headers.findIndex(h=>['email','mail','correo'].includes(h))
     const iFuente=headers.findIndex(h=>['fuente','origen','source'].includes(h))
-    if(iNombre===-1){out.innerHTML='<div class="empty">No encontré una columna de "nombre" en el CSV.</div>';return}
     if(iTel===-1){out.innerHTML='<div class="empty">No encontré una columna de "teléfono" en el CSV — sin eso no se puede evitar cargar duplicados.</div>';return}
     const lanzamiento_id=state.lanz?state.lanz.id:null
     const candidatos=[];let vacios=0
     for(let r=1;r<rows.length;r++){const row=rows[r];if(!row||!row.length)continue
-      const nombre=(row[iNombre]||'').trim()
-      if(!nombre){vacios++;continue}
       const telefono=(row[iTel]||'').trim()
+      if(!telefono){vacios++;continue}
+      const nombre=(iNombre>-1?(row[iNombre]||'').trim():'')||`Sin nombre (${telefono})`
       const contacto=iContacto>-1?(row[iContacto]||'').trim():''
       const email=iEmail>-1?(row[iEmail]||'').trim():''
       const fuente=iFuente>-1?(row[iFuente]||'').trim():'base propia'
@@ -451,7 +450,7 @@ async function importarBaseCSV(){
       const{error}=await sb.from('leads').insert(lote)
       if(error){out.innerHTML=`<div class="empty">Error cargando: ${esc(error.message)}</div>`;return}
       cargados+=lote.length}
-    out.innerHTML=`<div class="empty" style="color:var(--ink)">✓ ${cargados} leads cargados a tu base${omitidos?`, ${omitidos} omitidos (teléfono ya existía)`:''}${vacios?`, ${vacios} filas sin nombre ignoradas`:''}.</div>`
+    out.innerHTML=`<div class="empty" style="color:var(--ink)">✓ ${cargados} leads cargados a tu base${omitidos?`, ${omitidos} omitidos (teléfono ya existía)`:''}${vacios?`, ${vacios} filas sin teléfono ignoradas`:''}.</div>`
     inp.value=''
   }catch(e){out.innerHTML=`<div class="empty">Error: ${esc(e.message||String(e))}</div>`}
   finally{btn.textContent='Importar';btn.disabled=false}}
