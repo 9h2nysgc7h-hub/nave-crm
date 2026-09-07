@@ -379,6 +379,7 @@ function renderImportarBase(){
     <div class="card">
       <p class="cdesc">Subí un CSV de tu base (necesita una columna de teléfono — el nombre es opcional, si no lo tenés no pasa nada). Todo lo que cargues queda asignado a vos, y solo vos y los managers pueden ver esta lista — al resto del equipo no le aparece. Si un teléfono ya existe como lead en el CRM, esa fila se omite — no se pisa ni se duplica nada.</p>
       <div class="field"><label>Archivo CSV</label><input class="inp" type="file" id="csv_file" accept=".csv,text/csv"/></div>
+      <label style="display:flex;align-items:center;gap:8px;margin:0 0 12px;font-size:13px;color:var(--muted)"><input type="checkbox" id="csv_overwrite"/> Sobrescribir si el teléfono ya existe <b>en mi base</b> (solo actualiza tus propios contactos que sigan en estado "Nuevo" — nunca toca leads de otro asesor ni que ya avanzaron)</label>
       <div class="actions"><div class="grow"></div><button class="btn primary" id="csv_go">Importar</button></div>
       <div id="csv_result" style="margin-top:14px"></div>
     </div>
@@ -441,19 +442,33 @@ async function importarBaseCSV(){
       const dedup_key=telefono?telefono.toLowerCase().replace(/[^a-z0-9]/g,''):null
       candidatos.push({nombre,telefono:telefono||null,contacto:contacto||null,email:email||null,fuente:fuente||'base propia',dedup_key,estado:'Nuevo',temperatura:'potencial',asesor_id:me.id,lanzamiento_id,updated_at:new Date().toISOString()})}
     if(!candidatos.length){out.innerHTML='<div class="empty">No hay filas válidas para cargar.</div>';return}
-    const{data:todos}=await sb.from('leads').select('telefono,dedup_key').limit(20000)
-    const existentes=new Set()
-    ;(todos||[]).forEach(l=>{if(l.dedup_key)existentes.add(l.dedup_key)
-      const t=l.telefono?l.telefono.toLowerCase().replace(/[^a-z0-9]/g,''):null
-      if(t)existentes.add(t)})
-    const nuevos=candidatos.filter(c=>!c.dedup_key||!existentes.has(c.dedup_key))
-    const omitidos=candidatos.length-nuevos.length
+    const sobrescribir=document.getElementById('csv_overwrite').checked
+    const{data:todos}=await sb.from('leads').select('id,telefono,dedup_key,asesor_id,fuente,estado').limit(20000)
+    const propiosNuevos=new Map(),otrosExistentes=new Set()
+    ;(todos||[]).forEach(l=>{
+      const keys=[l.dedup_key,l.telefono?l.telefono.toLowerCase().replace(/[^a-z0-9]/g,''):null].filter(Boolean)
+      const esPropioNuevo=l.asesor_id===me.id&&l.fuente==='base propia'&&l.estado==='Nuevo'
+      keys.forEach(k=>{if(esPropioNuevo)propiosNuevos.set(k,l.id);else otrosExistentes.add(k)})})
+    const nuevos=[],actualizar=[]
+    let omitidos=0
+    candidatos.forEach(c=>{
+      if(c.dedup_key&&otrosExistentes.has(c.dedup_key)){omitidos++;return}
+      if(c.dedup_key&&propiosNuevos.has(c.dedup_key)){
+        if(sobrescribir)actualizar.push({id:propiosNuevos.get(c.dedup_key),patch:{nombre:c.nombre,contacto:c.contacto,email:c.email,fuente:c.fuente,updated_at:c.updated_at}})
+        else omitidos++
+        return}
+      nuevos.push(c)})
     let cargados=0
     for(let i=0;i<nuevos.length;i+=300){const lote=nuevos.slice(i,i+300)
       const{error}=await sb.from('leads').insert(lote)
       if(error){out.innerHTML=`<div class="empty">Error cargando: ${esc(error.message)}</div>`;return}
       cargados+=lote.length}
-    out.innerHTML=`<div class="empty" style="color:var(--ink)">✓ ${cargados} leads cargados a tu base${omitidos?`, ${omitidos} omitidos (teléfono ya existía)`:''}${vacios?`, ${vacios} filas sin teléfono ignoradas`:''}.</div>`
+    let actualizados=0
+    for(const a of actualizar){
+      const{error}=await sb.from('leads').update(a.patch).eq('id',a.id)
+      if(error){out.innerHTML=`<div class="empty">Error actualizando: ${esc(error.message)}</div>`;return}
+      actualizados++}
+    out.innerHTML=`<div class="empty" style="color:var(--ink)">✓ ${cargados} leads cargados a tu base${actualizados?`, ${actualizados} actualizados`:''}${omitidos?`, ${omitidos} omitidos (teléfono ya existía)`:''}${vacios?`, ${vacios} filas sin teléfono ignoradas`:''}.</div>`
     inp.value=''
   }catch(e){out.innerHTML=`<div class="empty">Error: ${esc(e.message||String(e))}</div>`}
   finally{btn.textContent='Importar';btn.disabled=false}}
