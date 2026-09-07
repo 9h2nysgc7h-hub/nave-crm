@@ -420,11 +420,14 @@ async function importarBaseCSV(){
     const text=await file.text(),rows=parseCSV(text)
     if(!rows.length){out.innerHTML='<div class="empty">El archivo está vacío.</div>';return}
     const headers=rows[0].map(normHeader)
-    const iNombre=headers.findIndex(h=>['nombre','name'].includes(h))
-    const iTel=headers.findIndex(h=>['telefono','phone','celular','whatsapp','numero','tel'].includes(h))
-    const iContacto=headers.findIndex(h=>['contacto','usuario','instagram','ig','handle'].includes(h))
-    const iEmail=headers.findIndex(h=>['email','mail','correo'].includes(h))
-    const iFuente=headers.findIndex(h=>['fuente','origen','source'].includes(h))
+    const findCol=(exact,contains,exclude=[])=>{
+      let i=headers.findIndex(h=>exact.includes(h));if(i>-1)return i
+      return headers.findIndex(h=>contains.some(c=>h.includes(c))&&!exclude.some(e=>h.includes(e)))}
+    const iNombre=findCol(['nombre','name'],['saved name','public name','display name','contact name','nombre completo','nombre','name'],['country'])
+    const iTel=findCol(['telefono','phone','celular','whatsapp','numero','tel'],['telefono','phone','celular','whatsapp','numero','number','tel','movil','mobile'],['code'])
+    const iContacto=findCol(['contacto','usuario','instagram','ig','handle'],['contacto','usuario','instagram','handle'])
+    const iEmail=findCol(['email','mail','correo'],['email','mail','correo'])
+    const iFuente=findCol(['fuente','origen','source'],['fuente','origen','source'])
     if(iTel===-1){out.innerHTML='<div class="empty">No encontré una columna de "teléfono" en el CSV — sin eso no se puede evitar cargar duplicados.</div>';return}
     const lanzamiento_id=state.lanz?state.lanz.id:null
     const candidatos=[];let vacios=0
