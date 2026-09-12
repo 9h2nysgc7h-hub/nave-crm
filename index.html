@@ -346,6 +346,7 @@ function renderImport(){const showAsesor=isMgr()||myProfile.rol==='closer'
     <div class="row2"><div class="field"><label>Email</label><input class="inp" id="ag_email" type="email" placeholder="lead@mail.com"/></div><div class="field"><label>Fuente</label><select id="ag_fuente">${CANALES.map(c=>`<option value="${c[0]}">${c[1]}</option>`).join('')}</select></div></div>
     <div class="row2"><div class="field"><label>Temperatura</label><select id="ag_temp">${TEMPS.map(t=>`<option>${t}</option>`).join('')}</select></div><div class="field"><label>Fecha de la agenda *</label><input class="inp" id="ag_fecha" type="date"/></div></div>
     ${showAsesor?`<div class="field"><label>Asesor${myProfile.rol==='closer'?' (si sabés qué setter trabajó este lead)':''}</label><select id="ag_asesor"><option value="">— sin asignar —</option>${state.setters.filter(s=>s.rol==='setter').map(s=>`<option value="${s.id}">${esc(s.nombre)}</option>`).join('')}</select></div>`:''}
+    <div class="field"><label>Closer que la toma</label><select id="ag_closer"><option value="">— sin asignar —</option>${state.setters.filter(s=>s.rol==='closer').map(s=>`<option value="${s.id}"${myProfile.rol==='closer'&&s.id===me.id?' selected':''}>${esc(s.nombre)}</option>`).join('')}</select></div>
     </div>
     <div class="card"><h3>Contexto para el closer</h3><p class="cdesc">Mini reporte para que el closer llegue a la llamada con el terreno preparado.${myProfile.rol==='closer'?' Si no tenés esta info, dejalo vacío y guardá igual — el setter asignado puede completarlo después desde Leads.':''}</p>
     <div class="field"><label>Situación actual</label><textarea class="inp" id="ag_situacion" rows="2"></textarea></div>
@@ -371,7 +372,8 @@ async function saveAgenda(){const g=id=>document.getElementById(id),btn=g('ag_sa
     const r=await sb.from('leads').insert(p).select().single();lead=r.data;error=r.error
   }
   if(error){toast('Error: '+error.message);btn.textContent='Guardar agenda';return}
-  await sb.from('seguimientos').insert({lead_id:lead.id,asesor_id:asesorId||me.id,fecha_programada:fecha,tipo:'agenda',nota:'Llamada agendada'})
+  const closerId=g('ag_closer').value||(myProfile.rol==='closer'?me.id:null)
+  await sb.from('seguimientos').insert({lead_id:lead.id,asesor_id:asesorId||me.id,closer_id:closerId,fecha_programada:fecha,tipo:'agenda',nota:'Llamada agendada'})
   toast('Agenda guardada ✓');location.hash='#/calendario'}
 /* ================= MI BASE (CSV + lista privada) ================= */
 function renderImportarBase(){
@@ -509,36 +511,41 @@ async function renderMisAgendas(){view().innerHTML=head('SETTER','Mis agendas')+
   document.querySelectorAll('[data-ma]').forEach(b=>b.onclick=async()=>{const{data:l}=await sb.from('leads').select('*').eq('id',b.dataset.ma).single();openLeadModal(l)})}
 
 /* ================= TRIAGE ================= */
-async function renderTriage(){view().innerHTML=head('CLOSER','Triage')+`<div class="card"><h3>Agendas para triage</h3><p class="cdesc">Leads que agendaron y hay que calificar/preparar antes de la call.</p><div id="tr"></div></div>`
-  let leadIds=null
+function triageRowHTML(l){return `<div class="listrow"><div style="flex:1"><div class="nm">${esc(l.nombre)}</div><div class="sub2">${esc(l.contacto||'')} · ${esc(l.tema||'sin tema')}</div></div><span class="chip ${l.temperatura}">${esc(l.temperatura)}</span><button class="pg" data-l="${l.id}">Abrir</button></div>`}
+async function renderTriage(){view().innerHTML=head('CLOSER','Triage')+`<div class="card"><h3>Agendas para triage</h3><p class="cdesc">Leads que agendaron y hay que calificar/preparar antes de la call.</p><div id="tr"></div><div id="tr_otros" style="margin-top:20px"></div></div>`
+  let misIds=null
   if(!isMgr()&&myProfile.rol==='closer'){
     const{data:segs}=await sb.from('seguimientos').select('lead_id').eq('closer_id',me.id).eq('hecho',false)
-    leadIds=[...new Set((segs||[]).map(s=>s.lead_id).filter(Boolean))]
+    misIds=new Set((segs||[]).map(s=>s.lead_id).filter(Boolean))
   }
-  let data=[]
-  if(!leadIds||leadIds.length){
-    let tq=sb.from('leads').select('*').in('estado',['Agendó','Confirmó clase']).order('updated_at',{ascending:false}).limit(100)
-    if(leadIds)tq=tq.in('id',leadIds)
-    ;({data}=await tq)
+  const{data:todos}=await sb.from('leads').select('*').in('estado',['Agendó','Confirmó clase']).order('updated_at',{ascending:false}).limit(200)
+  if(misIds){
+    const mias=(todos||[]).filter(l=>misIds.has(l.id)),otras=(todos||[]).filter(l=>!misIds.has(l.id))
+    document.getElementById('tr').innerHTML=mias.length?mias.map(triageRowHTML).join(''):`<div class="empty" style="padding:24px">Nada en triage para vos.</div>`
+    document.getElementById('tr_otros').innerHTML=otras.length?`<h3 style="margin-bottom:8px">Agendas de otros closers <span class="sub2" style="font-weight:400">· por si cubriste una call</span></h3>${otras.map(triageRowHTML).join('')}`:''
+  }else{
+    document.getElementById('tr').innerHTML=(todos&&todos.length)?todos.map(triageRowHTML).join(''):`<div class="empty" style="padding:24px">Nada en triage.</div>`
   }
-  document.getElementById('tr').innerHTML=(data&&data.length)?data.map(l=>`<div class="listrow"><div style="flex:1"><div class="nm">${esc(l.nombre)}</div><div class="sub2">${esc(l.contacto||'')} · ${esc(l.tema||'sin tema')}</div></div><span class="chip ${l.temperatura}">${esc(l.temperatura)}</span><button class="pg" data-l="${l.id}">Abrir</button></div>`).join(''):`<div class="empty" style="padding:24px">Nada en triage.</div>`
   document.querySelectorAll('[data-l]').forEach(b=>b.onclick=async()=>{const{data:l}=await sb.from('leads').select('*').eq('id',b.dataset.l).single();openLeadModal(l)})}
 
 /* ================= REPORTE DE LLAMADAS ================= */
 async function renderReporte(){
-  let repLeadIds=null
+  let misIds=null
   if(!isMgr()&&myProfile.rol==='closer'){
     const{data:segs}=await sb.from('seguimientos').select('lead_id').eq('closer_id',me.id)
-    repLeadIds=[...new Set((segs||[]).map(s=>s.lead_id).filter(Boolean))]
+    misIds=new Set((segs||[]).map(s=>s.lead_id).filter(Boolean))
   }
-  let leads=[]
-  if(!repLeadIds||repLeadIds.length){
-    let lq=sb.from('leads').select('id,nombre,asesor_id').in('estado',['Agendó','Confirmó clase','Asistió']).order('updated_at',{ascending:false}).limit(300)
-    if(repLeadIds)lq=lq.in('id',repLeadIds)
-    ;({data:leads}=await lq)
+  const{data:leads}=await sb.from('leads').select('id,nombre,asesor_id').in('estado',['Agendó','Confirmó clase','Asistió']).order('updated_at',{ascending:false}).limit(300)
+  const optHTML=l=>`<option value="${l.id}">${esc(l.nombre)}</option>`
+  let leadOptionsHTML
+  if(misIds){
+    const mias=(leads||[]).filter(l=>misIds.has(l.id)),otras=(leads||[]).filter(l=>!misIds.has(l.id))
+    leadOptionsHTML=(mias.length?`<optgroup label="Tus agendas">${mias.map(optHTML).join('')}</optgroup>`:'')+(otras.length?`<optgroup label="Resto del equipo">${otras.map(optHTML).join('')}</optgroup>`:'')
+  }else{
+    leadOptionsHTML=(leads||[]).map(optHTML).join('')
   }
   view().innerHTML=head('CLOSER','Reporte de llamadas')+`<div class="card"><h3>Datos de la llamada</h3>
-    <div class="row2"><div class="field"><label>Lead (agenda)</label><select id="r_lead"><option value="">— elegir —</option>${(leads||[]).map(l=>`<option value="${l.id}">${esc(l.nombre)}</option>`).join('')}</select></div><div class="field"><label>¿No está? Nombre nuevo</label><input class="inp" id="r_nuevo" placeholder="Se crea el lead solo"/></div></div>
+    <div class="row2"><div class="field"><label>Lead (agenda)</label><select id="r_lead"><option value="">— elegir —</option>${leadOptionsHTML}</select></div><div class="field"><label>¿No está? Nombre nuevo</label><input class="inp" id="r_nuevo" placeholder="Se crea el lead solo"/></div></div>
     <div class="row2"><div class="field"><label>¿Se presentó?</label><select id="r_asis"><option>Asistió</option><option>No-show</option><option>Reprogramó</option></select></div><div class="field"><label>Resultado</label><select id="r_res"><option value="">— sin resultado —</option><option>Cerró</option><option>Seguimiento</option><option>No cierre</option></select></div></div>
     <div class="field"><label>Link de Fathom</label><input class="inp" id="r_fathom" placeholder="https://fathom.video/..."/></div></div>
     <div class="card"><h3>Venta <span class="sub2" style="font-weight:400">· completá solo si cerró</span></h3>${ventaFormHTML('r_')}<p class="cdesc" style="margin-top:12px">Cada moneda se trackea por separado (sin conversión). El comprobante queda adjunto a la cuota pagada.</p></div>
