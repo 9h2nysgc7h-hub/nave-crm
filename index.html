@@ -452,13 +452,17 @@ async function importarBaseCSV(){
       const esPropioNuevo=l.asesor_id===me.id&&l.fuente==='base propia'&&l.estado==='Nuevo'
       keys.forEach(k=>{if(esPropioNuevo)propiosNuevos.set(k,l.id);else otrosExistentes.add(k)})})
     const nuevos=[],actualizar=[]
-    let omitidos=0
+    let omitidos=0,repetidosArchivo=0
+    const vistosEnArchivo=new Set()
     candidatos.forEach(c=>{
       if(c.dedup_key&&otrosExistentes.has(c.dedup_key)){omitidos++;return}
       if(c.dedup_key&&propiosNuevos.has(c.dedup_key)){
         if(sobrescribir)actualizar.push({id:propiosNuevos.get(c.dedup_key),patch:{nombre:c.nombre,contacto:c.contacto,email:c.email,fuente:c.fuente,updated_at:c.updated_at}})
         else omitidos++
         return}
+      if(c.dedup_key){
+        if(vistosEnArchivo.has(c.dedup_key)){repetidosArchivo++;return}
+        vistosEnArchivo.add(c.dedup_key)}
       nuevos.push(c)})
     let cargados=0
     for(let i=0;i<nuevos.length;i+=300){const lote=nuevos.slice(i,i+300)
@@ -470,7 +474,7 @@ async function importarBaseCSV(){
       const{error}=await sb.from('leads').update(a.patch).eq('id',a.id)
       if(error){out.innerHTML=`<div class="empty">Error actualizando: ${esc(error.message)}</div>`;return}
       actualizados++}
-    out.innerHTML=`<div class="empty" style="color:var(--ink)">✓ ${cargados} leads cargados a tu base${actualizados?`, ${actualizados} actualizados`:''}${omitidos?`, ${omitidos} omitidos (teléfono ya existía)`:''}${vacios?`, ${vacios} filas sin teléfono ignoradas`:''}.</div>`
+    out.innerHTML=`<div class="empty" style="color:var(--ink)">✓ ${cargados} leads cargados a tu base${actualizados?`, ${actualizados} actualizados`:''}${omitidos?`, ${omitidos} omitidos (teléfono ya existía)`:''}${repetidosArchivo?`, ${repetidosArchivo} repetidos dentro del mismo archivo (se cargó solo el primero)`:''}${vacios?`, ${vacios} filas sin teléfono ignoradas`:''}.</div>`
     inp.value=''
   }catch(e){out.innerHTML=`<div class="empty">Error: ${esc(e.message||String(e))}</div>`}
   finally{btn.textContent='Importar';btn.disabled=false}}
