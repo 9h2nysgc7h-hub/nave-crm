@@ -181,8 +181,8 @@ async function ensureClases(){if(!state.lanz)return
 // null = todos los roles. [] = solo manager/admin.
 const NAV=[
   {g:null,items:[['#/panel','Panel general',null],['#/calendario','Calendario',null],['#/strikes','Strikes',null],['#/guia','Guía',null]]},
-  {g:'Setter',items:[['#/leads','Leads',['setter']],['#/nuevo','Nuevo lead',['setter']],['#/importar','Cargar agenda',['setter','closer']],['#/basecsv','Mi base',['setter']],['#/misagendas','Mis agendas',['setter']],['#/kpis','KPIs diarios',['setter']]]},
-  {g:'Closer',items:[['#/triage','Triage',['closer']],['#/reporte','Reporte de llamadas',['closer']],['#/grilla','Grilla de reportes',['closer','setter']]]},
+  {g:'Setter',items:[['#/leads','Leads',['setter']],['#/nuevo','Nuevo lead',['setter']],['#/importar','Cargar agenda',['setter','closer']],['#/basecsv','Mi base',['setter']],['#/misagendas','Mis agendas',['setter']],['#/kpis','KPIs diarios',['setter']],['#/sinasesor','Leads sin asesor',[]]]},
+  {g:'Closer',items:[['#/triage','Triage',['closer']],['#/reporte','Reporte de llamadas',['closer']],['#/grilla','Grilla de reportes',['closer','setter']],['#/noasignados','Agendas sin closer',[]]]},
   {g:'Ventas',items:[['#/ventas','Ventas',null],['#/senas','Señas',null]]},
   {g:'Marketing',items:[['#/marketing','Rendimiento de contenido',[]]]},
   {g:'Cobros',items:[['#/cobros','Cuotas y seguimientos',null],['#/facturacion','Facturación',null],['#/comisiones','Comisiones',null]]}]
@@ -198,7 +198,7 @@ function renderShell(){
   document.getElementById('so').onclick=()=>sb.auth.signOut();window.onhashchange=route}
 function setActive(){root.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('on',a.dataset.h===location.hash))}
 function route(){setActive();const h=location.hash
-  const map={'#/panel':renderPanel,'#/calendario':renderCalendario,'#/guia':renderGuia,'#/strikes':renderStrikes,'#/leads':renderLeads,'#/nuevo':()=>openLeadModal(),'#/importar':renderImport,'#/basecsv':renderImportarBase,'#/misagendas':renderMisAgendas,'#/kpis':renderKpis,'#/triage':renderTriage,'#/reporte':renderReporte,'#/grilla':renderGrilla,'#/ventas':renderVentas,'#/senas':renderSenas,'#/comisiones':renderComisiones,'#/facturacion':renderFacturacion,'#/marketing':renderMarketing,'#/cobros':renderCobros}
+  const map={'#/panel':renderPanel,'#/calendario':renderCalendario,'#/guia':renderGuia,'#/strikes':renderStrikes,'#/leads':renderLeads,'#/nuevo':()=>openLeadModal(),'#/importar':renderImport,'#/basecsv':renderImportarBase,'#/misagendas':renderMisAgendas,'#/sinasesor':renderSinAsesor,'#/kpis':renderKpis,'#/triage':renderTriage,'#/reporte':renderReporte,'#/grilla':renderGrilla,'#/noasignados':renderNoAsignados,'#/ventas':renderVentas,'#/senas':renderSenas,'#/comisiones':renderComisiones,'#/facturacion':renderFacturacion,'#/marketing':renderMarketing,'#/cobros':renderCobros}
   ;(map[h]||renderPanel)()}
 function head(sub,title,actions=''){return `<div class="top"><div><div class="sub">${sub}</div><h1>${title}</h1></div><div class="grow"></div>${actions}</div>`}
 
@@ -484,6 +484,23 @@ async function autoRepartir(){if(!confirm('¿Repartir los leads SIN asignar entr
   for(let i=0;i<un.length;i++)await sb.from('leads').update({asesor_id:st[i%st.length].id}).eq('id',un[i].id)
   toast(`Repartidos ${un.length} leads ✓`);loadLeads();loadFunnel()}
 
+/* ================= LEADS SIN ASESOR ================= */
+// Cuando llegan muchas agendas de golpe (ráfaga manual o vía Calendly sin
+// UTM de un setter), el asesor_id puede quedar en null — esta pantalla los
+// junta a todos para asignarlos uno por uno, a diferencia de Auto-repartir
+// que los reparte al azar sin que el manager elija quién se queda con cada uno.
+async function renderSinAsesor(){
+  view().innerHTML=head('MANAGER','Leads sin asesor')+`<div class="card"><p class="cdesc">Leads sin ningún setter asignado — por lo general de ráfagas de agendas que llegaron juntas (manual o Calendly) sin quedar trazadas a un setter. Asignalos uno por uno acá.</p><div id="sa_rows"></div></div>`
+  const{data:leads}=await sb.from('leads').select('id,nombre,telefono,fuente,estado,created_at').is('asesor_id',null).order('created_at',{ascending:false}).limit(500)
+  const setters=state.setters.filter(s=>s.rol==='setter')
+  const el=document.getElementById('sa_rows')
+  el.innerHTML=(leads&&leads.length)?leads.map(l=>`<div class="listrow"><div style="flex:1"><div class="nm">${esc(l.nombre)}</div><div class="sub2">${esc(l.telefono||'sin teléfono')} · ${esc(l.fuente||'—')} · ${esc(l.estado)} · ${fmtDateTime(l.created_at)}</div></div><select id="sa_sel_${l.id}"><option value="">— elegir setter —</option>${setters.map(s=>`<option value="${s.id}">${esc(s.nombre)}</option>`).join('')}</select><button class="pg" data-asignar-set="${l.id}">Asignar</button></div>`).join(''):`<div class="empty" style="padding:24px">No hay leads sin asesor por ahora 🎉</div>`
+  document.querySelectorAll('[data-asignar-set]').forEach(b=>b.onclick=async()=>{
+    const leadId=b.dataset.asignarSet,sel=document.getElementById('sa_sel_'+leadId),setterId=sel.value
+    if(!setterId){toast('Elegí un setter primero');return}
+    await sb.from('leads').update({asesor_id:setterId,updated_at:new Date().toISOString()}).eq('id',leadId)
+    toast('Setter asignado ✓');renderSinAsesor()})}
+
 /* ================= KPIS DIARIOS ================= */
 async function renderKpis(){const today=new Date().toISOString().slice(0,10)
   view().innerHTML=head('SETTER','KPIs diarios')+`<div class="card"><h3>Cargar KPI del día</h3><p class="cdesc">Se actualizan cada vez que guardás — podés volver a cargar durante el día.</p>
@@ -578,6 +595,35 @@ async function saveReporte(){const g=id=>document.getElementById(id)
   }else if(leadId&&rep.asistio==='Asistió'){await sb.from('leads').update({estado:'Asistió'}).eq('id',leadId)}
   if(leadId&&rep.proximo_seguimiento)await sb.from('seguimientos').insert({lead_id:leadId,asesor_id:me.id,fecha_programada:rep.proximo_seguimiento,tipo:'post-call',nota:rep.proxima_accion})
   toast('Reporte guardado ✓');location.hash='#/grilla'}
+
+/* ================= AGENDAS SIN CLOSER (huérfanas) ================= */
+// Detecta leads agendados que no tienen ningún seguimiento tipo "agenda" con
+// closer_id asignado — por eso quedan invisibles en Triage/Reporte para
+// cualquier closer, aunque sigan apareciendo en Ventas (que no filtra por
+// closer). Bug de origen: "Cargar agenda" y el webhook de Calendly pueden
+// crear ese seguimiento sin closer_id si nadie lo eligió a tiempo.
+async function renderNoAsignados(){
+  view().innerHTML=head('MANAGER','Agendas sin closer')+`<div class="card"><p class="cdesc">Leads agendados que no tienen ningún closer asignado en sus seguimientos — por eso no le aparecen a nadie en Triage ni en Reporte de llamadas, aunque sigan visibles en Ventas. Asignales un closer acá para destrabarlos.</p><div id="na_rows"></div></div>`
+  const{data:leads}=await sb.from('leads').select('id,nombre,telefono,estado,updated_at').in('estado',['Agendó','Confirmó clase','Asistió']).order('updated_at',{ascending:false}).limit(500)
+  const ids=(leads||[]).map(l=>l.id)
+  let segsByLead={}
+  if(ids.length){
+    const{data:segs}=await sb.from('seguimientos').select('id,lead_id,closer_id').eq('tipo','agenda').in('lead_id',ids)
+    ;(segs||[]).forEach(s=>{if(!segsByLead[s.lead_id])segsByLead[s.lead_id]=[];segsByLead[s.lead_id].push(s)})}
+  const huerfanos=(leads||[]).filter(l=>{const segs=segsByLead[l.id]||[];return!segs.some(s=>s.closer_id)})
+  const closers=state.setters.filter(s=>s.rol==='closer')
+  const el=document.getElementById('na_rows')
+  el.innerHTML=huerfanos.length?huerfanos.map(l=>`<div class="listrow" data-row="${l.id}"><div style="flex:1"><div class="nm">${esc(l.nombre)}</div><div class="sub2">${esc(l.telefono||'sin teléfono')} · ${esc(l.estado)} · actualizado ${fmtDate(l.updated_at)}</div></div><select id="na_sel_${l.id}"><option value="">— elegir closer —</option>${closers.map(c=>`<option value="${c.id}">${esc(c.nombre)}</option>`).join('')}</select><button class="pg" data-asignar="${l.id}">Asignar</button></div>`).join(''):`<div class="empty" style="padding:24px">No hay agendas huérfanas por ahora 🎉</div>`
+  document.querySelectorAll('[data-asignar]').forEach(b=>b.onclick=async()=>{
+    const leadId=b.dataset.asignar,sel=document.getElementById('na_sel_'+leadId),closerId=sel.value
+    if(!closerId){toast('Elegí un closer primero');return}
+    const existentes=segsByLead[leadId]||[]
+    if(existentes.length){
+      await sb.from('seguimientos').update({closer_id:closerId}).eq('id',existentes[0].id)
+    }else{
+      await sb.from('seguimientos').insert({lead_id:leadId,closer_id:closerId,tipo:'agenda',fecha_programada:new Date().toISOString().slice(0,10),nota:'Asignación manual — huérfano detectado'})
+    }
+    toast('Closer asignado ✓');renderNoAsignados()})}
 
 /* ================= GRILLA DE REPORTES ================= */
 async function renderGrilla(){view().innerHTML=head('CLOSER','Grilla de reportes')+`<div class="tablewrap"><table><thead><tr><th>Lead</th><th>Fecha</th><th>Closer</th><th>Asistencia</th><th>Resultado</th><th>Programa</th><th>Facturado</th><th>Cargado</th></tr></thead><tbody id="grows"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table></div>`
