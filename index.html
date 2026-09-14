@@ -180,7 +180,7 @@ async function ensureClases(){if(!state.lanz)return
 // Tercer elemento de cada item = roles (aparte de manager/admin, que siempre ven todo) que lo ven.
 // null = todos los roles. [] = solo manager/admin.
 const NAV=[
-  {g:null,items:[['#/panel','Panel general',null],['#/calendario','Calendario',null],['#/strikes','Strikes',null],['#/guia','Guía',null]]},
+  {g:null,items:[['#/panel','Panel general',null],['#/calendario','Calendario',null],['#/agendas','Todas las agendas',[]],['#/strikes','Strikes',null],['#/guia','Guía',null]]},
   {g:'Setter',items:[['#/leads','Leads',['setter']],['#/nuevo','Nuevo lead',['setter']],['#/importar','Cargar agenda',['setter','closer']],['#/basecsv','Mi base',['setter']],['#/misagendas','Mis agendas',['setter']],['#/kpis','KPIs diarios',['setter']],['#/sinasesor','Leads sin asesor',[]]]},
   {g:'Closer',items:[['#/triage','Triage',['closer']],['#/reporte','Reporte de llamadas',['closer']],['#/grilla','Grilla de reportes',['closer','setter']],['#/noasignados','Agendas sin closer',[]]]},
   {g:'Ventas',items:[['#/ventas','Ventas',null],['#/senas','Señas',null]]},
@@ -198,7 +198,7 @@ function renderShell(){
   document.getElementById('so').onclick=()=>sb.auth.signOut();window.onhashchange=route}
 function setActive(){root.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('on',a.dataset.h===location.hash))}
 function route(){setActive();const h=location.hash
-  const map={'#/panel':renderPanel,'#/calendario':renderCalendario,'#/guia':renderGuia,'#/strikes':renderStrikes,'#/leads':renderLeads,'#/nuevo':()=>openLeadModal(),'#/importar':renderImport,'#/basecsv':renderImportarBase,'#/misagendas':renderMisAgendas,'#/sinasesor':renderSinAsesor,'#/kpis':renderKpis,'#/triage':renderTriage,'#/reporte':renderReporte,'#/grilla':renderGrilla,'#/noasignados':renderNoAsignados,'#/ventas':renderVentas,'#/senas':renderSenas,'#/comisiones':renderComisiones,'#/facturacion':renderFacturacion,'#/marketing':renderMarketing,'#/cobros':renderCobros}
+  const map={'#/panel':renderPanel,'#/calendario':renderCalendario,'#/agendas':renderAgendas,'#/guia':renderGuia,'#/strikes':renderStrikes,'#/leads':renderLeads,'#/nuevo':()=>openLeadModal(),'#/importar':renderImport,'#/basecsv':renderImportarBase,'#/misagendas':renderMisAgendas,'#/sinasesor':renderSinAsesor,'#/kpis':renderKpis,'#/triage':renderTriage,'#/reporte':renderReporte,'#/grilla':renderGrilla,'#/noasignados':renderNoAsignados,'#/ventas':renderVentas,'#/senas':renderSenas,'#/comisiones':renderComisiones,'#/facturacion':renderFacturacion,'#/marketing':renderMarketing,'#/cobros':renderCobros}
   ;(map[h]||renderPanel)()}
 function head(sub,title,actions=''){return `<div class="top"><div><div class="sub">${sub}</div><h1>${title}</h1></div><div class="grow"></div>${actions}</div>`}
 
@@ -1141,6 +1141,30 @@ async function renderCalendario(){view().innerHTML=head('AGENDA','Calendario')+`
   const byDay={};items.forEach(i=>{(byDay[i.d]=byDay[i.d]||[]).push(i)})
   const days=Object.keys(byDay)
   document.getElementById('ag').innerHTML=days.length?days.map(d=>`<div class="day">${new Date(d+'T00:00').toLocaleDateString('es',{weekday:'long',day:'2-digit',month:'long'})}</div>${byDay[d].map(i=>`<div class="ev"><span class="tg">${i.tg}</span><span>${esc(i.t)}</span></div>`).join('')}`).join(''):`<div class="empty">No hay clases ni seguimientos agendados.</div>`}
+
+/* ================= TODAS LAS AGENDAS (manager) ================= */
+// Vista completa de seguimientos tipo "agenda", filtrable por setter y por
+// closer — para que el manager pueda auditar el conjunto, no solo su propia
+// cola o la de un closer puntual (eso ya lo cubren Mis agendas / Triage).
+let agFiltroSetter='',agFiltroCloser=''
+async function renderAgendas(){
+  view().innerHTML=head('MANAGER','Todas las agendas')+`<div class="card">
+    <div class="tb">
+      <select class="pill" id="ag_f_setter"><option value="">Todos los setters</option>${state.setters.filter(s=>s.rol==='setter').map(s=>`<option value="${s.id}" ${agFiltroSetter===s.id?'selected':''}>${esc(s.nombre)}</option>`).join('')}</select>
+      <select class="pill" id="ag_f_closer"><option value="">Todos los closers</option>${state.setters.filter(s=>s.rol==='closer').map(s=>`<option value="${s.id}" ${agFiltroCloser===s.id?'selected':''}>${esc(s.nombre)}</option>`).join('')}</select>
+    </div>
+    <div class="tablewrap"><table><thead><tr><th>Lead</th><th>Teléfono</th><th>Estado</th><th>Fecha agenda</th><th>Setter</th><th>Closer</th><th>Hecho</th><th>Cargado</th></tr></thead><tbody id="ag_rows"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table></div></div>`
+  document.getElementById('ag_f_setter').onchange=e=>{agFiltroSetter=e.target.value;loadAgendasAdmin()}
+  document.getElementById('ag_f_closer').onchange=e=>{agFiltroCloser=e.target.value;loadAgendasAdmin()}
+  loadAgendasAdmin()}
+async function loadAgendasAdmin(){
+  let q=sb.from('seguimientos').select('*,leads(nombre,telefono,estado)').eq('tipo','agenda').order('fecha_programada',{ascending:false}).limit(500)
+  if(agFiltroSetter)q=q.eq('asesor_id',agFiltroSetter)
+  if(agFiltroCloser)q=q.eq('closer_id',agFiltroCloser)
+  const{data,error}=await q
+  const rows=document.getElementById('ag_rows');if(!rows)return
+  if(error){rows.innerHTML=`<tr><td colspan="8" class="empty">Error: ${esc(error.message)}</td></tr>`;return}
+  rows.innerHTML=(data&&data.length)?data.map(s=>`<tr><td class="nm">${esc(s.leads?s.leads.nombre:'—')}</td><td class="sub2">${esc((s.leads&&s.leads.telefono)||'—')}</td><td class="sub2">${esc((s.leads&&s.leads.estado)||'—')}</td><td class="sub2">${esc(s.fecha_programada||'—')}</td><td class="sub2">${esc(nameOf(s.asesor_id)||'sin asesor')}</td><td class="sub2">${esc(nameOf(s.closer_id)||'sin closer')}</td><td>${s.hecho?'✓':'—'}</td><td class="sub2">${fmtDateTime(s.created_at)}</td></tr>`).join(''):`<tr><td colspan="8" class="empty">Sin agendas para este filtro.</td></tr>`}
 
 /* ================= STRIKES ================= */
 async function renderStrikes(){const canLog=isMgr()||myProfile.rol==='director'
