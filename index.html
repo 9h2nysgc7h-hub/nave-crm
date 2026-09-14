@@ -1164,26 +1164,31 @@ async function renderAgendas(){
   document.getElementById('ag_f_sit').onchange=e=>{agFiltroSituacion=e.target.value;loadAgendasAdmin()}
   loadAgendasAdmin()}
 async function loadAgendasAdmin(){
-  let q=sb.from('leads').select('id,nombre,telefono,estado,updated_at').in('estado',['Agendó','Confirmó clase','Asistió','Cerrado'])
-  if(state.lanz)q=q.eq('lanzamiento_id',state.lanz.id)
-  if(agFiltroSituacion==='cerrada')q=q.eq('estado','Cerrado')
-  else if(agFiltroSituacion==='nocerrada')q=q.neq('estado','Cerrado')
-  q=q.order('updated_at',{ascending:false}).limit(1000)
-  const{data:leads,error}=await q
   const rows=document.getElementById('ag_rows');if(!rows)return
-  if(error){rows.innerHTML=`<tr><td colspan="7" class="empty">Error: ${esc(error.message)}</td></tr>`;return}
-  const ids=(leads||[]).map(l=>l.id)
-  const segsByLead={}
-  if(ids.length){
-    const{data:segs}=await sb.from('seguimientos').select('lead_id,asesor_id,closer_id,fecha_programada').eq('tipo','agenda').in('lead_id',ids)
-    ;(segs||[]).forEach(s=>{
-      const cur=segsByLead[s.lead_id]
-      if(!cur||(!cur.closer_id&&s.closer_id))segsByLead[s.lead_id]=s})}
-  let filas=leads||[]
-  if(agFiltroSetter)filas=filas.filter(l=>(segsByLead[l.id]||{}).asesor_id===agFiltroSetter)
-  if(agFiltroCloser)filas=filas.filter(l=>(segsByLead[l.id]||{}).closer_id===agFiltroCloser)
-  rows.innerHTML=filas.length?filas.map(l=>{const s=segsByLead[l.id]||{},cerrada=l.estado==='Cerrado'
-    return `<tr><td class="nm">${esc(l.nombre)}</td><td class="sub2">${esc(l.telefono||'—')}</td><td><span class="chip ${cerrada?'cobrado':'pendiente'}">${cerrada?'Cerrada':'No cerrada'}</span></td><td class="sub2">${esc(s.fecha_programada||'—')}</td><td class="sub2">${esc(nameOf(s.asesor_id)||'sin asesor')}</td><td class="sub2">${esc(nameOf(s.closer_id)||'sin closer')}</td><td class="sub2">${fmtDateTime(l.updated_at)}</td></tr>`}).join(''):`<tr><td colspan="7" class="empty">Sin agendas para este filtro.</td></tr>`}
+  // 1) Cada seguimiento tipo "agenda" del lanzamiento activo es una fila —
+  //    a propósito NO se agrupa por lead: si alguien tiene 2 reprogramaciones
+  //    son 2 agendas reales, y agrupar es justo lo que las venía escondiendo.
+  let sq=sb.from('seguimientos').select('id,lead_id,asesor_id,closer_id,fecha_programada,created_at,leads!inner(nombre,telefono,estado,lanzamiento_id,updated_at)').eq('tipo','agenda').limit(3000)
+  if(state.lanz)sq=sq.eq('leads.lanzamiento_id',state.lanz.id)
+  const{data:segs,error:e1}=await sq
+  if(e1){rows.innerHTML=`<tr><td colspan="7" class="empty">Error: ${esc(e1.message)}</td></tr>`;return}
+  const filasSeg=(segs||[]).map(s=>({leadId:s.lead_id,nombre:s.leads.nombre,telefono:s.leads.telefono,estado:s.leads.estado,fecha:s.fecha_programada,asesor_id:s.asesor_id,closer_id:s.closer_id,orden:s.fecha_programada||s.created_at}))
+  // 2) Leads en etapa de agenda que no tengan NINGÚN seguimiento tipo "agenda"
+  //    (el bug de origen: quedan con estado "Agendó" pero sin ese registro).
+  let lq=sb.from('leads').select('id,nombre,telefono,estado,updated_at').in('estado',['Agendó','Confirmó clase','Asistió','Cerrado']).limit(2000)
+  if(state.lanz)lq=lq.eq('lanzamiento_id',state.lanz.id)
+  const{data:candidatos,error:e2}=await lq
+  if(e2){rows.innerHTML=`<tr><td colspan="7" class="empty">Error: ${esc(e2.message)}</td></tr>`;return}
+  const idsConSeg=new Set(filasSeg.map(f=>f.leadId))
+  const filasSinSeg=(candidatos||[]).filter(l=>!idsConSeg.has(l.id)).map(l=>({leadId:l.id,nombre:l.nombre,telefono:l.telefono,estado:l.estado,fecha:null,asesor_id:null,closer_id:null,orden:l.updated_at}))
+  let filas=[...filasSeg,...filasSinSeg]
+  if(agFiltroSituacion==='cerrada')filas=filas.filter(f=>f.estado==='Cerrado')
+  else if(agFiltroSituacion==='nocerrada')filas=filas.filter(f=>f.estado!=='Cerrado')
+  if(agFiltroSetter)filas=filas.filter(f=>f.asesor_id===agFiltroSetter)
+  if(agFiltroCloser)filas=filas.filter(f=>f.closer_id===agFiltroCloser)
+  filas.sort((a,b)=>(b.orden||'').localeCompare(a.orden||''))
+  rows.innerHTML=filas.length?filas.map(f=>{const cerrada=f.estado==='Cerrado'
+    return `<tr><td class="nm">${esc(f.nombre)}</td><td class="sub2">${esc(f.telefono||'—')}</td><td><span class="chip ${cerrada?'cobrado':'pendiente'}">${cerrada?'Cerrada':'No cerrada'}</span></td><td class="sub2">${esc(f.fecha||'—')}</td><td class="sub2">${esc(nameOf(f.asesor_id)||'sin asesor')}</td><td class="sub2">${esc(nameOf(f.closer_id)||'sin closer')}</td><td class="sub2">${fmtDateTime(f.orden)}</td></tr>`}).join(''):`<tr><td colspan="7" class="empty">Sin agendas para este filtro.</td></tr>`}
 
 /* ================= STRIKES ================= */
 async function renderStrikes(){const canLog=isMgr()||myProfile.rol==='director'
