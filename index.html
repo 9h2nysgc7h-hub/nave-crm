@@ -733,6 +733,7 @@ function ventaFormHTML(p){return `
   <div class="field"><label>Programa</label><input class="inp" id="${p}prog" placeholder="Programa vendido"/></div>
   <div class="row2"><div class="field"><label>Setter (comisión)</label><select id="${p}setter"><option value="">— sin setter —</option>${state.setters.map(s=>`<option value="${s.id}">${esc(s.nombre)}</option>`).join('')}</select></div>
     <div class="field"><label>Closer (comisión)</label><select id="${p}closer"><option value="">— sin closer —</option>${state.setters.map(s=>`<option value="${s.id}" ${s.id===(me&&me.id)?'selected':''}>${esc(s.nombre)}</option>`).join('')}</select></div></div>
+  ${isMgr()?`<div class="row2"><div class="field"><label>% Setter (comisión)</label><input class="inp" id="${p}csetter" type="number" step="0.5" placeholder="default del perfil"/></div><div class="field"><label>% Closer (comisión)</label><input class="inp" id="${p}ccloser" type="number" step="0.5" placeholder="default del perfil"/></div></div><div class="sub2" style="margin:-6px 0 12px">Se autocompleta con el % default de cada persona al elegirla — pisalo para casos puntuales (ej: venta por chat con condición distinta). Vacío = usa el default del perfil.</div>`:''}
   <div class="field"><label>Equipo (para comisión del director)</label><select id="${p}equipo">${EQUIPOS.map(e=>`<option value="${e[0]}">${e[1]}</option>`).join('')}</select></div>
   <div class="row3"><div class="field"><label>Ticket (total)</label><input class="inp" id="${p}ticket" type="number" placeholder="0"/></div>
     <div class="field"><label>Dinero que pagó</label><input class="inp" id="${p}pago" type="number" placeholder="0"/></div>
@@ -752,11 +753,14 @@ function wireVentaForm(p){const g=id=>document.getElementById(p+id)
       for(let i=1;i<=n;i++)rows+=`<div class="row2" data-cuota="${i}"><div class="field"><label>Cuota ${i+1} — monto</label><input class="inp cuotaMonto" type="number" value="${each?Number(each.toFixed(2)):''}"/></div><div class="field"><label>Vencimiento cuota ${i+1}</label><input class="inp cuotaVenc" type="date"/></div></div>`
       box.innerHTML=`<div class="sechead">Cuotas pendientes (a cobrar)</div>${rows}`
       box.querySelectorAll('.cuotaVenc').forEach((el,idx)=>{const d=new Date();d.setMonth(d.getMonth()+idx+1);el.value=d.toISOString().slice(0,10)})}}
-  g('ticket').oninput=build;g('pago').oninput=build;g('forma').onchange=build;build()}
+  g('ticket').oninput=build;g('pago').oninput=build;g('forma').onchange=build;build()
+  const setterSel=g('setter'),closerSel=g('closer'),csetterInp=g('csetter'),ccloserInp=g('ccloser')
+  if(setterSel&&csetterInp)setterSel.addEventListener('change',()=>{if(!csetterInp.value)csetterInp.value=pctOf(setterSel.value,'com_setter_pct')||''})
+  if(closerSel&&ccloserInp)closerSel.addEventListener('change',()=>{if(!ccloserInp.value)ccloserInp.value=pctOf(closerSel.value,'com_closer_pct')||''})}
 // Lee los valores del formulario de venta
 function readVentaForm(p){const g=id=>document.getElementById(p+id),cuotas=[]
   document.querySelectorAll('#'+p+'cuotasBox [data-cuota]').forEach(r=>{const monto=Number(r.querySelector('.cuotaMonto').value||0),venc=r.querySelector('.cuotaVenc').value||null;if(monto>0)cuotas.push({monto,vencimiento:venc})})
-  return{canal:(g('canal')&&g('canal').value)||'lanzamiento',forma:g('forma').value,moneda:g('mon').value,billetera:g('bill').value.trim(),programa:g('prog').value.trim(),setter:g('setter').value||null,closer:(g('closer')&&g('closer').value)||null,equipo:(g('equipo')&&g('equipo').value)||null,sena:(g('sena')&&g('sena').value)||null,ticket:Number(g('ticket').value||0),pago:Number(g('pago').value||0),cobrar:Number(g('cobrar').value||0),baseComision:(g('basecom')&&Number(g('basecom').value))||0,cuotas,file:(g('file').files&&g('file').files[0])||null}}
+  return{canal:(g('canal')&&g('canal').value)||'lanzamiento',forma:g('forma').value,moneda:g('mon').value,billetera:g('bill').value.trim(),programa:g('prog').value.trim(),setter:g('setter').value||null,closer:(g('closer')&&g('closer').value)||null,equipo:(g('equipo')&&g('equipo').value)||null,sena:(g('sena')&&g('sena').value)||null,ticket:Number(g('ticket').value||0),pago:Number(g('pago').value||0),cobrar:Number(g('cobrar').value||0),baseComision:(g('basecom')&&Number(g('basecom').value))||0,comSetterPct:(g('csetter')&&g('csetter').value!==''?Number(g('csetter').value):null),comCloserPct:(g('ccloser')&&g('ccloser').value!==''?Number(g('ccloser').value):null),cuotas,file:(g('file').files&&g('file').files[0])||null}}
 // Sube el comprobante a Supabase Storage (bucket 'comprobantes') y devuelve la URL pública
 async function uploadComprobante(file){if(!file)return null
   const ext=(file.name.split('.').pop()||'bin').toLowerCase(),rnd=Math.random().toString(36).slice(2,8)
@@ -771,7 +775,8 @@ async function saveVenta(v){const rate=1 // cada moneda se trackea por separado,
   if(v.file)comprobante_url=await uploadComprobante(v.file)
   const origen=v.reporteId?'closing':'venta'
   const closerId=v.closer||v.closerId||me.id,setterId=v.setterId||v.setter||null
-  const com_setter_pct=setterId?pctOf(setterId,'com_setter_pct'):0,com_closer_pct=pctOf(closerId,'com_closer_pct')
+  const com_setter_pct=v.comSetterPct!=null?v.comSetterPct:(setterId?pctOf(setterId,'com_setter_pct'):0)
+  const com_closer_pct=v.comCloserPct!=null?v.comCloserPct:pctOf(closerId,'com_closer_pct')
   const canal=v.canal||'lanzamiento',lanzId=canal==='lanzamiento'?(state.lanz?state.lanz.id:null):null
   const venta={lanzamiento_id:lanzId,canal,equipo:v.equipo||null,lead_id:v.leadId||null,cliente:v.cliente||null,closer_id:closerId,setter_id:setterId,com_setter_pct,com_closer_pct,reporte_id:v.reporteId||null,programa:v.programa||null,moneda:v.moneda,cotizacion:rate,ticket:v.ticket,base_comisionable:(Number(v.baseComision)>0?Number(v.baseComision):v.ticket),pagado:v.pago,a_cobrar:v.cobrar,forma_pago:v.forma,billetera:v.billetera||null,comprobante_url,origen}
   let ventaId=v.editId
@@ -846,6 +851,8 @@ async function openVentaModal(venta){const isEdit=!!venta
     gid('bill').value=venta.billetera||'';gid('prog').value=venta.programa||''
     if(venta.setter_id)gid('setter').value=venta.setter_id
     if(venta.closer_id)gid('closer').value=venta.closer_id
+    if(gid('csetter')&&venta.com_setter_pct!=null)gid('csetter').value=venta.com_setter_pct
+    if(gid('ccloser')&&venta.com_closer_pct!=null)gid('ccloser').value=venta.com_closer_pct
     gid('equipo').value=venta.equipo||''
     gid('ticket').value=venta.ticket!=null?venta.ticket:'';gid('pago').value=venta.pagado!=null?venta.pagado:''
     if(venta.base_comisionable!=null)gid('basecom').value=venta.base_comisionable
