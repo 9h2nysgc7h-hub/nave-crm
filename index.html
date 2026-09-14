@@ -1143,28 +1143,47 @@ async function renderCalendario(){view().innerHTML=head('AGENDA','Calendario')+`
   document.getElementById('ag').innerHTML=days.length?days.map(d=>`<div class="day">${new Date(d+'T00:00').toLocaleDateString('es',{weekday:'long',day:'2-digit',month:'long'})}</div>${byDay[d].map(i=>`<div class="ev"><span class="tg">${i.tg}</span><span>${esc(i.t)}</span></div>`).join('')}`).join(''):`<div class="empty">No hay clases ni seguimientos agendados.</div>`}
 
 /* ================= TODAS LAS AGENDAS (manager) ================= */
-// Vista completa de seguimientos tipo "agenda", filtrable por setter y por
-// closer — para que el manager pueda auditar el conjunto, no solo su propia
-// cola o la de un closer puntual (eso ya lo cubren Mis agendas / Triage).
-let agFiltroSetter='',agFiltroCloser=''
+// Parte de "leads" (no de "seguimientos"): así aparecen TODOS los leads en
+// etapa de agenda del lanzamiento activo, incluso si por algún bug les falta
+// el seguimiento con el setter/closer bien cargado (ese caso se ve como
+// "sin asesor"/"sin closer" en la fila, en vez de desaparecer directamente).
+// Situación = closed/no-closed según leads.estado — 'Cerrado' es lo único
+// que saveVenta() marca como cerrado en todo el CRM.
+let agFiltroSetter='',agFiltroCloser='',agFiltroSituacion=''
 async function renderAgendas(){
   view().innerHTML=head('MANAGER','Todas las agendas')+`<div class="card">
+    <p class="cdesc">Todos los leads en etapa de agenda del lanzamiento activo${state.lanz?' ('+esc(state.lanz.nombre)+')':''} — tomadas y por tomar, cerradas y no cerradas.</p>
     <div class="tb">
       <select class="pill" id="ag_f_setter"><option value="">Todos los setters</option>${state.setters.filter(s=>s.rol==='setter').map(s=>`<option value="${s.id}" ${agFiltroSetter===s.id?'selected':''}>${esc(s.nombre)}</option>`).join('')}</select>
       <select class="pill" id="ag_f_closer"><option value="">Todos los closers</option>${state.setters.filter(s=>s.rol==='closer').map(s=>`<option value="${s.id}" ${agFiltroCloser===s.id?'selected':''}>${esc(s.nombre)}</option>`).join('')}</select>
+      <select class="pill" id="ag_f_sit"><option value="">Todas las situaciones</option><option value="cerrada" ${agFiltroSituacion==='cerrada'?'selected':''}>Cerradas</option><option value="nocerrada" ${agFiltroSituacion==='nocerrada'?'selected':''}>No cerradas</option></select>
     </div>
-    <div class="tablewrap"><table><thead><tr><th>Lead</th><th>Teléfono</th><th>Estado</th><th>Fecha agenda</th><th>Setter</th><th>Closer</th><th>Hecho</th><th>Cargado</th></tr></thead><tbody id="ag_rows"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table></div></div>`
+    <div class="tablewrap"><table><thead><tr><th>Lead</th><th>Teléfono</th><th>Situación</th><th>Fecha agenda</th><th>Setter</th><th>Closer</th><th>Actualizado</th></tr></thead><tbody id="ag_rows"><tr><td colspan="7" class="empty">Cargando…</td></tr></tbody></table></div></div>`
   document.getElementById('ag_f_setter').onchange=e=>{agFiltroSetter=e.target.value;loadAgendasAdmin()}
   document.getElementById('ag_f_closer').onchange=e=>{agFiltroCloser=e.target.value;loadAgendasAdmin()}
+  document.getElementById('ag_f_sit').onchange=e=>{agFiltroSituacion=e.target.value;loadAgendasAdmin()}
   loadAgendasAdmin()}
 async function loadAgendasAdmin(){
-  let q=sb.from('seguimientos').select('*,leads(nombre,telefono,estado)').eq('tipo','agenda').order('fecha_programada',{ascending:false}).limit(500)
-  if(agFiltroSetter)q=q.eq('asesor_id',agFiltroSetter)
-  if(agFiltroCloser)q=q.eq('closer_id',agFiltroCloser)
-  const{data,error}=await q
+  let q=sb.from('leads').select('id,nombre,telefono,estado,updated_at').in('estado',['Agendó','Confirmó clase','Asistió','Cerrado'])
+  if(state.lanz)q=q.eq('lanzamiento_id',state.lanz.id)
+  if(agFiltroSituacion==='cerrada')q=q.eq('estado','Cerrado')
+  else if(agFiltroSituacion==='nocerrada')q=q.neq('estado','Cerrado')
+  q=q.order('updated_at',{ascending:false}).limit(1000)
+  const{data:leads,error}=await q
   const rows=document.getElementById('ag_rows');if(!rows)return
-  if(error){rows.innerHTML=`<tr><td colspan="8" class="empty">Error: ${esc(error.message)}</td></tr>`;return}
-  rows.innerHTML=(data&&data.length)?data.map(s=>`<tr><td class="nm">${esc(s.leads?s.leads.nombre:'—')}</td><td class="sub2">${esc((s.leads&&s.leads.telefono)||'—')}</td><td class="sub2">${esc((s.leads&&s.leads.estado)||'—')}</td><td class="sub2">${esc(s.fecha_programada||'—')}</td><td class="sub2">${esc(nameOf(s.asesor_id)||'sin asesor')}</td><td class="sub2">${esc(nameOf(s.closer_id)||'sin closer')}</td><td>${s.hecho?'✓':'—'}</td><td class="sub2">${fmtDateTime(s.created_at)}</td></tr>`).join(''):`<tr><td colspan="8" class="empty">Sin agendas para este filtro.</td></tr>`}
+  if(error){rows.innerHTML=`<tr><td colspan="7" class="empty">Error: ${esc(error.message)}</td></tr>`;return}
+  const ids=(leads||[]).map(l=>l.id)
+  const segsByLead={}
+  if(ids.length){
+    const{data:segs}=await sb.from('seguimientos').select('lead_id,asesor_id,closer_id,fecha_programada').eq('tipo','agenda').in('lead_id',ids)
+    ;(segs||[]).forEach(s=>{
+      const cur=segsByLead[s.lead_id]
+      if(!cur||(!cur.closer_id&&s.closer_id))segsByLead[s.lead_id]=s})}
+  let filas=leads||[]
+  if(agFiltroSetter)filas=filas.filter(l=>(segsByLead[l.id]||{}).asesor_id===agFiltroSetter)
+  if(agFiltroCloser)filas=filas.filter(l=>(segsByLead[l.id]||{}).closer_id===agFiltroCloser)
+  rows.innerHTML=filas.length?filas.map(l=>{const s=segsByLead[l.id]||{},cerrada=l.estado==='Cerrado'
+    return `<tr><td class="nm">${esc(l.nombre)}</td><td class="sub2">${esc(l.telefono||'—')}</td><td><span class="chip ${cerrada?'cobrado':'pendiente'}">${cerrada?'Cerrada':'No cerrada'}</span></td><td class="sub2">${esc(s.fecha_programada||'—')}</td><td class="sub2">${esc(nameOf(s.asesor_id)||'sin asesor')}</td><td class="sub2">${esc(nameOf(s.closer_id)||'sin closer')}</td><td class="sub2">${fmtDateTime(l.updated_at)}</td></tr>`}).join(''):`<tr><td colspan="7" class="empty">Sin agendas para este filtro.</td></tr>`}
 
 /* ================= STRIKES ================= */
 async function renderStrikes(){const canLog=isMgr()||myProfile.rol==='director'
