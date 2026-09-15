@@ -1181,12 +1181,12 @@ async function loadAgendasAdmin(){
   if(e2){rows.innerHTML=`<tr><td colspan="7" class="empty">Error: ${esc(e2.message)}</td></tr>`;return}
   const idsConSeg=new Set(filasSeg.map(f=>f.leadId))
   const filasSinSeg=(candidatos||[]).filter(l=>!idsConSeg.has(l.id)).map(l=>({leadId:l.id,nombre:l.nombre,telefono:l.telefono,estado:l.estado,fecha:null,asesor_id:l.asesor_id,closer_id:null,orden:l.updated_at}))
-  console.log('[DEBUG agendas]',{segsCrudos:(segs||[]).length,filasSeg:filasSeg.length,candidatosCrudos:(candidatos||[]).length,filasSinSeg:filasSinSeg.length,lanzId:state.lanz&&state.lanz.id})
   let filas=[...filasSeg,...filasSinSeg]
   if(agFiltroSituacion==='cerrada')filas=filas.filter(f=>f.estado==='Cerrado')
   else if(agFiltroSituacion==='nocerrada')filas=filas.filter(f=>f.estado!=='Cerrado')
   if(agFiltroSetter)filas=filas.filter(f=>f.asesor_id===agFiltroSetter)
   if(agFiltroCloser)filas=filas.filter(f=>f.closer_id===agFiltroCloser)
+  console.log('[DEBUG agendas]',{filtroSetter:agFiltroSetter,filtroCloser:agFiltroCloser,filasSegDeElla:filasSeg.filter(f=>f.asesor_id===agFiltroSetter).length,filasSinSegDeElla:filasSinSeg.filter(f=>f.asesor_id===agFiltroSetter).length,totalFinal:filas.length,leadIds:filas.map(f=>f.leadId)})
   filas.sort((a,b)=>(b.orden||'').localeCompare(a.orden||''))
   rows.innerHTML=filas.length?filas.map(f=>{const cerrada=f.estado==='Cerrado'
     return `<tr><td class="nm">${esc(f.nombre)}</td><td class="sub2">${esc(f.telefono||'—')}</td><td><span class="chip ${cerrada?'cobrado':'pendiente'}">${cerrada?'Cerrada':'No cerrada'}</span></td><td class="sub2">${esc(f.fecha||'—')}</td><td class="sub2">${esc(nameOf(f.asesor_id)||'sin asesor')}</td><td class="sub2">${esc(nameOf(f.closer_id)||'sin closer')}</td><td class="sub2">${fmtDateTime(f.orden)}</td></tr>`}).join(''):`<tr><td colspan="7" class="empty">Sin agendas para este filtro.</td></tr>`}
