@@ -1166,7 +1166,7 @@ async function renderAgendas(){
       <select class="pill" id="ag_f_closer"><option value="">Todos los closers</option>${state.setters.filter(s=>s.rol==='closer').map(s=>`<option value="${s.id}" ${agFiltroCloser===s.id?'selected':''}>${esc(s.nombre)}</option>`).join('')}</select>
       <select class="pill" id="ag_f_sit"><option value="">Todas las situaciones</option><option value="cerrada" ${agFiltroSituacion==='cerrada'?'selected':''}>Cerradas</option><option value="nocerrada" ${agFiltroSituacion==='nocerrada'?'selected':''}>No cerradas</option></select>
     </div>
-    <div class="tablewrap"><table><thead><tr><th>Lead</th><th>Teléfono</th><th>Situación</th><th>Fecha agenda</th><th>Setter</th><th>Closer</th><th>Actualizado</th></tr></thead><tbody id="ag_rows"><tr><td colspan="7" class="empty">Cargando…</td></tr></tbody></table></div></div>`
+    <div class="tablewrap"><table><thead><tr><th>Lead</th><th>Teléfono</th><th>Situación</th><th>Fecha agenda</th><th>Setter</th><th>Closer</th><th>Actualizado</th><th></th></tr></thead><tbody id="ag_rows"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table></div></div>`
   document.getElementById('ag_f_setter').onchange=e=>{agFiltroSetter=e.target.value;loadAgendasAdmin()}
   document.getElementById('ag_f_closer').onchange=e=>{agFiltroCloser=e.target.value;loadAgendasAdmin()}
   document.getElementById('ag_f_sit').onchange=e=>{agFiltroSituacion=e.target.value;loadAgendasAdmin()}
@@ -1179,14 +1179,14 @@ async function loadAgendasAdmin(){
   let sq=sb.from('seguimientos').select('id,lead_id,asesor_id,closer_id,fecha_programada,created_at,leads!inner(nombre,telefono,estado,lanzamiento_id,updated_at)').eq('tipo','agenda').limit(3000)
   if(state.lanz)sq=sq.eq('leads.lanzamiento_id',state.lanz.id)
   const{data:segs,error:e1}=await sq
-  if(e1){rows.innerHTML=`<tr><td colspan="7" class="empty">Error: ${esc(e1.message)}</td></tr>`;return}
-  const filasSeg=(segs||[]).map(s=>({leadId:s.lead_id,nombre:s.leads.nombre,telefono:s.leads.telefono,estado:s.leads.estado,fecha:s.fecha_programada,asesor_id:s.asesor_id,closer_id:s.closer_id,orden:s.fecha_programada||s.created_at}))
+  if(e1){rows.innerHTML=`<tr><td colspan="8" class="empty">Error: ${esc(e1.message)}</td></tr>`;return}
+  const filasSeg=(segs||[]).map(s=>({segId:s.id,leadId:s.lead_id,nombre:s.leads.nombre,telefono:s.leads.telefono,estado:s.leads.estado,fecha:s.fecha_programada,asesor_id:s.asesor_id,closer_id:s.closer_id,orden:s.fecha_programada||s.created_at}))
   // 2) Leads en etapa de agenda que no tengan NINGÚN seguimiento tipo "agenda"
   //    (el bug de origen: quedan con estado "Agendó" pero sin ese registro).
   let lq=sb.from('leads').select('id,nombre,telefono,estado,updated_at,asesor_id').in('estado',['Agendó','Confirmó clase','Asistió','Cerrado']).limit(2000)
   if(state.lanz)lq=lq.eq('lanzamiento_id',state.lanz.id)
   const{data:candidatos,error:e2}=await lq
-  if(e2){rows.innerHTML=`<tr><td colspan="7" class="empty">Error: ${esc(e2.message)}</td></tr>`;return}
+  if(e2){rows.innerHTML=`<tr><td colspan="8" class="empty">Error: ${esc(e2.message)}</td></tr>`;return}
   // OJO: no alcanza con "el lead ya tiene algún seguimiento" — puede tener uno
   // con OTRO asesor (mal cargado) y el actual leads.asesor_id no estar reflejado
   // ahí. Por eso comparamos contra el asesor puntual del lead, no contra "tiene
@@ -1199,10 +1199,14 @@ async function loadAgendasAdmin(){
   else if(agFiltroSituacion==='nocerrada')filas=filas.filter(f=>f.estado!=='Cerrado')
   if(agFiltroSetter)filas=filas.filter(f=>f.asesor_id===agFiltroSetter)
   if(agFiltroCloser)filas=filas.filter(f=>f.closer_id===agFiltroCloser)
-  console.log('[DEBUG agendas]',{filtroSetter:agFiltroSetter,filtroCloser:agFiltroCloser,filasSegDeElla:filasSeg.filter(f=>f.asesor_id===agFiltroSetter).length,filasSinSegDeElla:filasSinSeg.filter(f=>f.asesor_id===agFiltroSetter).length,totalFinal:filas.length,leadIds:filas.map(f=>f.leadId)})
   filas.sort((a,b)=>(b.orden||'').localeCompare(a.orden||''))
   rows.innerHTML=filas.length?filas.map(f=>{const cerrada=f.estado==='Cerrado'
-    return `<tr><td class="nm">${esc(f.nombre)}</td><td class="sub2">${esc(f.telefono||'—')}</td><td><span class="chip ${cerrada?'cobrado':'pendiente'}">${cerrada?'Cerrada':'No cerrada'}</span></td><td class="sub2">${esc(f.fecha||'—')}</td><td class="sub2">${esc(nameOf(f.asesor_id)||'sin asesor')}</td><td class="sub2">${esc(nameOf(f.closer_id)||'sin closer')}</td><td class="sub2">${fmtDateTime(f.orden)}</td></tr>`}).join(''):`<tr><td colspan="7" class="empty">Sin agendas para este filtro.</td></tr>`}
+    return `<tr><td class="nm">${esc(f.nombre)}</td><td class="sub2">${esc(f.telefono||'—')}</td><td><span class="chip ${cerrada?'cobrado':'pendiente'}">${cerrada?'Cerrada':'No cerrada'}</span></td><td class="sub2">${esc(f.fecha||'—')}</td><td class="sub2">${esc(nameOf(f.asesor_id)||'sin asesor')}</td><td class="sub2">${esc(nameOf(f.closer_id)||'sin closer')}</td><td class="sub2">${fmtDateTime(f.orden)}</td><td>${f.segId?`<button class="pg" data-borrar-ag="${f.segId}">Borrar</button>`:'—'}</td></tr>`}).join(''):`<tr><td colspan="8" class="empty">Sin agendas para este filtro.</td></tr>`
+  document.querySelectorAll('[data-borrar-ag]').forEach(b=>b.onclick=async()=>{
+    if(!confirm('¿Borrar esta agenda? Solo elimina el registro de la agenda, no el lead.'))return
+    const{error}=await sb.from('seguimientos').delete().eq('id',b.dataset.borrarAg)
+    if(error){toast('Error: '+error.message);return}
+    toast('Agenda borrada ✓');loadAgendasAdmin()})}
 
 /* ================= STRIKES ================= */
 async function renderStrikes(){const canLog=isMgr()||myProfile.rol==='director'
