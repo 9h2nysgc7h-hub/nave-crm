@@ -1181,6 +1181,7 @@ async function loadAgendasAdmin(){
   if(e2){rows.innerHTML=`<tr><td colspan="7" class="empty">Error: ${esc(e2.message)}</td></tr>`;return}
   const idsConSeg=new Set(filasSeg.map(f=>f.leadId))
   const filasSinSeg=(candidatos||[]).filter(l=>!idsConSeg.has(l.id)).map(l=>({leadId:l.id,nombre:l.nombre,telefono:l.telefono,estado:l.estado,fecha:null,asesor_id:l.asesor_id,closer_id:null,orden:l.updated_at}))
+  console.log('[DEBUG agendas]',{segsCrudos:(segs||[]).length,filasSeg:filasSeg.length,candidatosCrudos:(candidatos||[]).length,filasSinSeg:filasSinSeg.length,lanzId:state.lanz&&state.lanz.id})
   let filas=[...filasSeg,...filasSinSeg]
   if(agFiltroSituacion==='cerrada')filas=filas.filter(f=>f.estado==='Cerrado')
   else if(agFiltroSituacion==='nocerrada')filas=filas.filter(f=>f.estado!=='Cerrado')
