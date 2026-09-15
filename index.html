@@ -481,7 +481,12 @@ async function importarBaseCSV(){
 async function autoRepartir(){if(!confirm('¿Repartir los leads SIN asignar entre los asesores activos?'))return
   const{data:un}=await sb.from('leads').select('id').is('asesor_id',null).limit(5000);if(!un||!un.length){toast('No hay leads sin asignar');return}
   const st=state.setters;if(!st.length){toast('No hay asesores activos');return}
-  for(let i=0;i<un.length;i++)await sb.from('leads').update({asesor_id:st[i%st.length].id}).eq('id',un[i].id)
+  for(let i=0;i<un.length;i++){const nuevoAsesor=st[i%st.length].id
+    await sb.from('leads').update({asesor_id:nuevoAsesor}).eq('id',un[i].id)
+    // Sincronizar también el seguimiento de agenda si ya existía uno — si no,
+    // queda desalineado (leads dice un asesor, seguimientos dice otro/ninguno)
+    // y ese lead se vuelve invisible para el asesor correcto en Triage/Reporte.
+    await sb.from('seguimientos').update({asesor_id:nuevoAsesor}).eq('lead_id',un[i].id).eq('tipo','agenda')}
   toast(`Repartidos ${un.length} leads ✓`);loadLeads();loadFunnel()}
 
 /* ================= LEADS SIN ASESOR ================= */
@@ -499,6 +504,9 @@ async function renderSinAsesor(){
     const leadId=b.dataset.asignarSet,sel=document.getElementById('sa_sel_'+leadId),setterId=sel.value
     if(!setterId){toast('Elegí un setter primero');return}
     await sb.from('leads').update({asesor_id:setterId,updated_at:new Date().toISOString()}).eq('id',leadId)
+    // Mismo motivo que en autoRepartir: si ya había un seguimiento de agenda
+    // para este lead, sincronizarlo — si no, queda desalineado para siempre.
+    await sb.from('seguimientos').update({asesor_id:setterId}).eq('lead_id',leadId).eq('tipo','agenda')
     toast('Setter asignado ✓');renderSinAsesor()})}
 
 /* ================= KPIS DIARIOS ================= */
@@ -1179,8 +1187,13 @@ async function loadAgendasAdmin(){
   if(state.lanz)lq=lq.eq('lanzamiento_id',state.lanz.id)
   const{data:candidatos,error:e2}=await lq
   if(e2){rows.innerHTML=`<tr><td colspan="7" class="empty">Error: ${esc(e2.message)}</td></tr>`;return}
-  const idsConSeg=new Set(filasSeg.map(f=>f.leadId))
-  const filasSinSeg=(candidatos||[]).filter(l=>!idsConSeg.has(l.id)).map(l=>({leadId:l.id,nombre:l.nombre,telefono:l.telefono,estado:l.estado,fecha:null,asesor_id:l.asesor_id,closer_id:null,orden:l.updated_at}))
+  // OJO: no alcanza con "el lead ya tiene algún seguimiento" — puede tener uno
+  // con OTRO asesor (mal cargado) y el actual leads.asesor_id no estar reflejado
+  // ahí. Por eso comparamos contra el asesor puntual del lead, no contra "tiene
+  // seguimiento sí/no" en general.
+  const asesoresPorLead={}
+  filasSeg.forEach(f=>{(asesoresPorLead[f.leadId]=asesoresPorLead[f.leadId]||new Set()).add(f.asesor_id)})
+  const filasSinSeg=(candidatos||[]).filter(l=>{const vistos=asesoresPorLead[l.id];return!vistos||!vistos.has(l.asesor_id)}).map(l=>({leadId:l.id,nombre:l.nombre,telefono:l.telefono,estado:l.estado,fecha:null,asesor_id:l.asesor_id,closer_id:null,orden:l.updated_at}))
   let filas=[...filasSeg,...filasSinSeg]
   if(agFiltroSituacion==='cerrada')filas=filas.filter(f=>f.estado==='Cerrado')
   else if(agFiltroSituacion==='nocerrada')filas=filas.filter(f=>f.estado!=='Cerrado')
