@@ -749,7 +749,8 @@ function ventaFormHTML(p){return `
   <div class="field"><label>Base comisionable (tope de comisión)</label><input class="inp" id="${p}basecom" type="number" placeholder="= ticket si no hay recargo"/><div class="sub2" style="margin-top:5px">Si cobrás recargo/interés por cuotas, poné acá el precio base (ej: 500). El setter y closer comisionan hasta este monto; el recargo no comisiona. Dejalo vacío si no hay recargo.</div></div>
   <div id="${p}cuotasBox"></div>
   <div class="field"><label>Seña a aplicar (opcional)</label><select id="${p}sena"><option value="">— sin seña —</option></select><div class="sub2" style="margin-top:5px">La seña no suma al ticket ni comisiona; entra al cash collected cuando se cobra la 1ª cuota.</div></div>
-  <div class="field"><label>Comprobante de pago</label><input class="inp" id="${p}file" type="file" accept="image/*,application/pdf" style="padding:10px"/></div>`}
+  <div class="field"><label>Comprobante de pago</label><input class="inp" id="${p}file" type="file" accept="image/*,application/pdf" multiple style="padding:10px"/><div class="sub2" style="margin-top:5px">Podés seleccionar más de uno (ej: el cliente pagó en dos transferencias distintas).</div></div>
+  <div id="${p}compList"></div>`}
 // Comportamiento dinámico: recalcula "a cobrar" y muestra los renglones de cuotas pendientes
 function wireVentaForm(p){const g=id=>document.getElementById(p+id)
   function build(){const ticket=Number(g('ticket').value||0),pago=Number(g('pago').value||0),forma=g('forma').value
@@ -768,7 +769,7 @@ function wireVentaForm(p){const g=id=>document.getElementById(p+id)
 // Lee los valores del formulario de venta
 function readVentaForm(p){const g=id=>document.getElementById(p+id),cuotas=[]
   document.querySelectorAll('#'+p+'cuotasBox [data-cuota]').forEach(r=>{const monto=Number(r.querySelector('.cuotaMonto').value||0),venc=r.querySelector('.cuotaVenc').value||null;if(monto>0)cuotas.push({monto,vencimiento:venc})})
-  return{canal:(g('canal')&&g('canal').value)||'lanzamiento',forma:g('forma').value,moneda:g('mon').value,billetera:g('bill').value.trim(),programa:g('prog').value.trim(),setter:g('setter').value||null,closer:(g('closer')&&g('closer').value)||null,equipo:(g('equipo')&&g('equipo').value)||null,sena:(g('sena')&&g('sena').value)||null,ticket:Number(g('ticket').value||0),pago:Number(g('pago').value||0),cobrar:Number(g('cobrar').value||0),baseComision:(g('basecom')&&Number(g('basecom').value))||0,comSetterPct:(g('csetter')&&g('csetter').value!==''?Number(g('csetter').value):null),comCloserPct:(g('ccloser')&&g('ccloser').value!==''?Number(g('ccloser').value):null),cuotas,file:(g('file').files&&g('file').files[0])||null}}
+  return{canal:(g('canal')&&g('canal').value)||'lanzamiento',forma:g('forma').value,moneda:g('mon').value,billetera:g('bill').value.trim(),programa:g('prog').value.trim(),setter:g('setter').value||null,closer:(g('closer')&&g('closer').value)||null,equipo:(g('equipo')&&g('equipo').value)||null,sena:(g('sena')&&g('sena').value)||null,ticket:Number(g('ticket').value||0),pago:Number(g('pago').value||0),cobrar:Number(g('cobrar').value||0),baseComision:(g('basecom')&&Number(g('basecom').value))||0,comSetterPct:(g('csetter')&&g('csetter').value!==''?Number(g('csetter').value):null),comCloserPct:(g('ccloser')&&g('ccloser').value!==''?Number(g('ccloser').value):null),cuotas,files:(g('file').files?Array.from(g('file').files):[])}}
 // Sube el comprobante a Supabase Storage (bucket 'comprobantes') y devuelve la URL pública
 async function uploadComprobante(file){if(!file)return null
   const ext=(file.name.split('.').pop()||'bin').toLowerCase(),rnd=Math.random().toString(36).slice(2,8)
@@ -780,7 +781,8 @@ async function uploadComprobante(file){if(!file)return null
 const pctOf=(id,field)=>{const p=state.setters.find(x=>x.id===id);return p?Number(p[field]||0):0}
 async function saveVenta(v){const rate=1 // cada moneda se trackea por separado, sin conversión
   let comprobante_url=v.currentComprobante||null
-  if(v.file)comprobante_url=await uploadComprobante(v.file)
+  let nuevasUrls=[]
+  if(v.files&&v.files.length){nuevasUrls=await Promise.all(v.files.map(f=>uploadComprobante(f)));comprobante_url=nuevasUrls[0]}
   const origen=v.reporteId?'closing':'venta'
   const closerId=v.closer||v.closerId||me.id,setterId=v.setterId||v.setter||null
   const com_setter_pct=v.comSetterPct!=null?v.comSetterPct:(setterId?pctOf(setterId,'com_setter_pct'):0)
@@ -803,6 +805,7 @@ async function saveVenta(v){const rate=1 // cada moneda se trackea por separado,
   if(cuotas.length){const{error:ce}=await sb.from('cuotas').insert(cuotas);if(ce)throw ce}
   if(v.sena)await sb.from('senas').update({venta_id:ventaId,estado:'aplicada'}).eq('id',v.sena)
   if(v.leadId)await sb.from('leads').update({estado:'Cerrado'}).eq('id',v.leadId)
+  if(nuevasUrls.length)await sb.from('venta_comprobantes').insert(nuevasUrls.map(url=>({venta_id:ventaId,url})))
   return{id:ventaId}}
 async function deleteVenta(id){
   const{data:oc}=await sb.from('cuotas').select('id').eq('venta_id',id)
@@ -841,7 +844,6 @@ async function openVentaModal(venta){const isEdit=!!venta
     ${isEdit?'<p class="cdesc" style="color:var(--warn)">Editar regenera las cuotas de esta venta. Si ya habías marcado cuotas cobradas o comisiones pagadas, se reinician.</p>':''}
     <div class="row2"><div class="field"><label>Lead (agenda)</label><select id="v_lead"><option value="">— manual / nuevo —</option>${(leads||[]).map(l=>`<option value="${l.id}">${esc(l.nombre)}</option>`).join('')}</select></div><div class="field"><label>Nombre (si es manual)</label><input class="inp" id="v_cliente" placeholder="Nombre del cliente"/></div></div>
     ${ventaFormHTML('v_')}
-    ${isEdit&&venta.comprobante_url?`<div class="sub2" style="margin:-6px 0 12px">Comprobante actual: <a href="${esc(venta.comprobante_url)}" target="_blank" rel="noopener">ver</a> — subí uno nuevo arriba solo si querés reemplazarlo.</div>`:''}
     <div class="actions">${isEdit?'<button class="btn danger" id="v_del">Eliminar venta</button>':''}<div class="grow"></div><button class="btn ghost" id="v_cancel">Cancelar</button><button class="btn primary" id="v_save">${isEdit?'Guardar cambios':'Guardar venta'}</button></div></div>`
   document.body.appendChild(ov);ov.onclick=e=>{if(e.target===ov)ov.remove()}
   ov.querySelector('#v_cancel').onclick=()=>ov.remove();wireVentaForm('v_')
@@ -871,6 +873,10 @@ async function openVentaModal(venta){const isEdit=!!venta
     const{data:sn}=await sb.from('senas').select('id,monto,moneda').eq('venta_id',venta.id).limit(1)
     if(sn&&sn[0]){const sel=gid('sena'),o=document.createElement('option');o.value=sn[0].id;o.textContent='(seña aplicada · '+esc(sn[0].moneda)+' '+num(sn[0].monto)+')';o.selected=true;sel.appendChild(o)}
     gid('ticket').dispatchEvent(new Event('input'))
+    const{data:comps}=await sb.from('venta_comprobantes').select('id,url').eq('venta_id',venta.id).order('created_at')
+    const listaComps=comps&&comps.length?comps:(venta.comprobante_url?[{id:null,url:venta.comprobante_url}]:[])
+    const compEl=gid('compList')
+    if(compEl)compEl.innerHTML=listaComps.length?`<div class="sub2" style="margin:-6px 0 12px">Comprobantes ya cargados: ${listaComps.map((c,i)=>`<a href="${esc(c.url)}" target="_blank" rel="noopener">ver ${i+1}</a>`).join(' · ')} — lo que subas arriba se agrega, no reemplaza.</div>`:''
     ov.querySelector('#v_del').onclick=async()=>{if(confirm('¿Eliminar esta venta? Se borran sus cuotas y comisiones, y se libera la seña si tenía.')){try{await deleteVenta(venta.id);toast('Venta eliminada ✓');ov.remove();renderVentas()}catch(e){toast('Error: '+(e.message||e))}}}
   }
   ov.querySelector('#v_save').onclick=async()=>{const btn=ov.querySelector('#v_save'),f=readVentaForm('v_')
