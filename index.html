@@ -244,8 +244,8 @@ function openSeguimientoModal(s,onSaved){const ov=document.createElement('div');
     const r=await delRow('seguimientos',s.id);if(!r.ok){toast(r.msg);return}
     toast('Borrado ✓');ov.remove();if(onSaved)onSaved()}}
 async function loadFunnel(){const el=document.getElementById('funnel');if(!el)return
-  const{count:total}=await sb.from('leads').select('*',{count:'exact',head:true})
-  const ci=async es=>{const{count}=await sb.from('leads').select('*',{count:'exact',head:true}).in('estado',es);return count||0}
+  const{count:total}=await sb.from('leads').select('*',{count:'exact',head:true}).eq('lanzamiento_id',state.lanz.id)
+  const ci=async es=>{const{count}=await sb.from('leads').select('*',{count:'exact',head:true}).eq('lanzamiento_id',state.lanz.id).in('estado',es);return count||0}
   const conf=await ci(['Confirmó clase','Asistió','Agendó','Cerrado']),asis=await ci(['Asistió','Agendó','Cerrado']),agen=await ci(['Agendó','Cerrado']),cerr=await ci(['Cerrado'])
   const t=total||0,pc=n=>t?((n/t*100).toFixed(1).replace('.',',')+'%'):'0%',w=n=>t?Math.round(n/t*100):0
   const cells=[['Leads totales',t,'100%',100],['Confirmaron clase',conf,pc(conf),w(conf)],['Asistieron',asis,pc(asis),w(asis)],['Agendaron call',agen,pc(agen),w(agen)],['Cerraron',cerr,pc(cerr),w(cerr)]]
@@ -290,7 +290,7 @@ async function renderLeads(){const v=view()
   v.querySelector('#f_temp').onchange=e=>{state.temp=e.target.value;state.page=0;loadLeads()}
   v.querySelector('#f_estado').onchange=e=>{state.estado=e.target.value;state.page=0;loadLeads()}
   loadFunnel();loadLeads()}
-function baseQuery(count){let q=sb.from('leads').select('*',count?{count:'exact'}:{})
+function baseQuery(count){let q=sb.from('leads').select('*',count?{count:'exact'}:{}).eq('lanzamiento_id',state.lanz.id)
   if(state.mine)q=q.eq('asesor_id',me.id);if(state.temp)q=q.eq('temperatura',state.temp);if(state.estado)q=q.eq('estado',state.estado)
   if(state.q)q=q.or(`nombre.ilike.%${state.q}%,contacto.ilike.%${state.q}%`);return q}
 async function loadLeads(){const rows=document.getElementById('rows');if(!rows)return
@@ -1144,7 +1144,7 @@ async function renderComConfig(){const{data:profs}=await sb.from('profiles').sel
 
 /* ================= CALENDARIO ================= */
 async function renderCalendario(){view().innerHTML=head('AGENDA','Calendario')+`<div class="card"><div class="agenda" id="ag"></div></div>`
-  const{data:clases}=await sb.from('clases').select('*').order('fecha')
+  const{data:clases}=await sb.from('clases').select('*').eq('lanzamiento_id',state.lanz.id).order('fecha')
   let sq=sb.from('seguimientos').select('*,leads(nombre)').eq('hecho',false).order('fecha_programada')
   if(!isMgr())sq=myProfile.rol==='closer'?sq.eq('closer_id',me.id):sq.eq('asesor_id',me.id)
   const{data:segs}=await sq
