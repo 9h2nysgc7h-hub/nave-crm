@@ -251,7 +251,7 @@ async function loadFunnel(){const el=document.getElementById('funnel');if(!el)re
   const cells=[['Leads totales',t,'100%',100],['Confirmaron clase',conf,pc(conf),w(conf)],['Asistieron',asis,pc(asis),w(asis)],['Agendaron call',agen,pc(agen),w(agen)],['Cerraron',cerr,pc(cerr),w(cerr)]]
   el.innerHTML=cells.map(([l,n,p,wd])=>`<div class="fcell"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/></svg><div class="n">${num(n)}</div><div class="l">${l}</div><div class="pct">${p}</div><div class="track"><i style="width:${wd}%"></i></div></div>`).join('')}
 async function loadKpiResumen(){const el=document.getElementById('kpiresumen');if(!el)return
-  const{data}=await sb.from('kpis_diarios').select('setter_id,fecha,leves,fluidos,potenciales,leads_sin_responder').limit(10000)
+  const{data}=await sb.from('kpis_diarios').select('setter_id,fecha,leves,fluidos,potenciales,leads_sin_responder').eq('lanzamiento_id',state.lanz.id).limit(10000)
   const ultimos={}
   ;(data||[]).forEach(x=>{const s=x.setter_id;if(!s)return
     if(!ultimos[s]||x.fecha>ultimos[s].fecha)ultimos[s]=x})
@@ -262,14 +262,14 @@ async function loadKpiResumen(){const el=document.getElementById('kpiresumen');i
   el.innerHTML=(data&&data.length)?cells.map(([l,n])=>`<div class="fcell"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/></svg><div class="n">${num(n)}</div><div class="l">${l}</div><div class="pct">${t?pc(n)+'%':'—'}</div><div class="track"><i style="width:${pc(n)}%"></i></div></div>`).join(''):`<div class="empty" style="padding:16px">Todavía no se cargó ningún KPI.</div>`}
 async function cobrosResumen(){const today=new Date().toISOString().slice(0,10)
   // Devuelve un objeto por moneda — cada moneda se trackea por separado, sin conversión a USD.
-  const{data}=await sb.from('cuotas').select('monto,moneda,estado,vencimiento,origen,venta_id').limit(10000)
+  const{data}=await sb.from('cuotas').select('monto,moneda,estado,vencimiento,origen,venta_id').eq('lanzamiento_id',state.lanz.id).limit(10000)
   const M={},slot=m=>M[m]=M[m]||{cobrado:0,aldia:0,vencidas:0,total:0,upsell:0,senas:0}
   const ventasConCobro=new Set()
   ;(data||[]).forEach(c=>{const mon=c.moneda||'USD',a=slot(mon),m=Number(c.monto||0);a.total+=m
     if(c.estado==='cobrado'){a.cobrado+=m;if(c.venta_id)ventasConCobro.add(c.venta_id);if(['upsell','resell'].includes(c.origen))a.upsell+=m}
     else if(c.estado==='vencido'||(c.vencimiento&&c.vencimiento<today))a.vencidas+=m;else a.aldia+=m})
   // señas: suman al cash collected sólo si su venta ya cobró al menos una cuota
-  const{data:sn}=await sb.from('senas').select('monto,moneda,venta_id,estado').eq('estado','aplicada').limit(10000)
+  const{data:sn}=await sb.from('senas').select('monto,moneda,venta_id,estado').eq('estado','aplicada').eq('lanzamiento_id',state.lanz.id).limit(10000)
   ;(sn||[]).forEach(s=>{if(s.venta_id&&ventasConCobro.has(s.venta_id)){const mon=s.moneda||'USD',a=slot(mon),m=Number(s.monto||0);a.senas+=m;a.cobrado+=m}})
   return M}
 
@@ -519,11 +519,11 @@ async function renderKpis(){const today=new Date().toISOString().slice(0,10)
     <div class="actions"><div class="grow"></div><button class="btn primary" id="k_save">Guardar KPIs del día</button></div></div>
     <div class="tablewrap"><table><thead><tr><th>Fecha</th><th>Setter</th><th>Asig.</th><th>Cont.</th><th>Sin resp.</th><th>Leves</th><th>Fluidos</th><th>Potenc.</th><th>Agendas</th><th>Cargado</th>${isMgr()?'<th></th>':''}</tr></thead><tbody id="khist"><tr><td colspan="${isMgr()?11:10}" class="empty">Cargando…</td></tr></tbody></table></div>`
   document.getElementById('k_save').onclick=async()=>{const g=id=>document.getElementById(id)
-    const p={setter_id:me.id,fecha:g('k_fecha').value,leads_asignados:+g('k_asig').value,leads_contactados:+g('k_cont').value,leads_sin_responder:+g('k_sinresp').value,leves:+g('k_leves').value,fluidos:+g('k_fluidos').value,potenciales:+g('k_potenciales').value,agendas_dia:+g('k_agdia').value,notas:g('k_notas').value.trim()}
-    const{error}=await sb.from('kpis_diarios').upsert(p,{onConflict:'setter_id,fecha'});if(error){toast('Error: '+error.message);return};toast('Guardado ✓');loadKhist()}
+    const p={setter_id:me.id,lanzamiento_id:state.lanz.id,fecha:g('k_fecha').value,leads_asignados:+g('k_asig').value,leads_contactados:+g('k_cont').value,leads_sin_responder:+g('k_sinresp').value,leves:+g('k_leves').value,fluidos:+g('k_fluidos').value,potenciales:+g('k_potenciales').value,agendas_dia:+g('k_agdia').value,notas:g('k_notas').value.trim()}
+    const{error}=await sb.from('kpis_diarios').upsert(p,{onConflict:'setter_id,fecha,lanzamiento_id'});if(error){toast('Error: '+error.message);return};toast('Guardado ✓');loadKhist()}
   loadKhist()}
 async function loadKhist(){const el=document.getElementById('khist');if(!el)return
-  let q=sb.from('kpis_diarios').select('*').order('fecha',{ascending:false}).limit(60);if(!isMgr())q=q.eq('setter_id',me.id)
+  let q=sb.from('kpis_diarios').select('*').eq('lanzamiento_id',state.lanz.id).order('fecha',{ascending:false}).limit(60);if(!isMgr())q=q.eq('setter_id',me.id)
   const{data}=await q;el.innerHTML=(data&&data.length)?data.map(k=>`<tr><td class="nm">${esc(k.fecha)}</td><td>${esc(nameOf(k.setter_id)||'—')}</td><td>${k.leads_asignados||0}</td><td>${k.leads_contactados||0}</td><td>${k.leads_sin_responder||0}</td><td>${k.leves||0}</td><td>${k.fluidos||0}</td><td>${k.potenciales||0}</td><td>${k.agendas_dia||0}</td><td class="sub2">${fmtDateTime(k.created_at)}</td>${isMgr()?`<td><button class="pg" data-kdel="${k.id}">Borrar</button></td>`:''}</tr>`).join(''):`<tr><td colspan="${isMgr()?11:10}" class="empty">Sin registros todavía.</td></tr>`
   if(isMgr())document.querySelectorAll('[data-kdel]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Borrar este registro de KPIs?'))return;const r=await delRow('kpis_diarios',b.dataset.kdel);if(!r.ok){toast(r.msg);return};toast('Borrado ✓');loadKhist()})}
 
@@ -692,7 +692,7 @@ async function renderCobros(){view().innerHTML=head('COBROS','Cuotas y seguimien
   document.querySelectorAll('[data-t]').forEach(t=>t.onclick=()=>{cobTab=t.dataset.t;renderCobros()})
   document.getElementById('c_add').onclick=async()=>{const g=id=>document.getElementById(id),mon=g('c_mon').value,monto=Number(g('c_monto').value||0)
     let leadId=null;if(g('c_lead').value.trim()){const{data}=await sb.from('leads').select('id').ilike('nombre',g('c_lead').value.trim()).limit(1);if(data&&data[0])leadId=data[0].id}
-    const{error}=await sb.from('cuotas').insert({lead_id:leadId,programa:g('c_prog').value.trim(),origen:g('c_org').value,moneda:mon,monto,monto_usd:monto,vencimiento:g('c_venc').value||null,billetera:g('c_bill').value.trim(),estado:'pendiente'})
+    const{error}=await sb.from('cuotas').insert({lead_id:leadId,lanzamiento_id:state.lanz.id,programa:g('c_prog').value.trim(),origen:g('c_org').value,moneda:mon,monto,monto_usd:monto,vencimiento:g('c_venc').value||null,billetera:g('c_bill').value.trim(),estado:'pendiente'})
     if(error){toast('Error: '+error.message);return};toast('Cuota agregada ✓');renderCobros()}
   // KPIs (separados por moneda)
   const c=await cobrosResumen(),ckeys=Object.keys(c)
@@ -800,8 +800,8 @@ async function saveVenta(v){const rate=1 // cada moneda se trackea por separado,
     const{error}=await sb.from('ventas').update(venta).eq('id',v.editId);if(error)throw error
   }else{const{data:vrow,error}=await sb.from('ventas').insert(venta).select().single();if(error)throw error;ventaId=vrow.id}
   const cuotas=[]
-  if(v.pago>0)cuotas.push({venta_id:ventaId,lead_id:v.leadId||null,programa:v.programa,moneda:v.moneda,monto:v.pago,monto_usd:v.pago/(rate||1),estado:'cobrado',origen,billetera:v.billetera,comprobante_url,cobrado_at:new Date().toISOString(),vencimiento:new Date().toISOString().slice(0,10)})
-  ;(v.cuotas||[]).forEach(c=>cuotas.push({venta_id:ventaId,lead_id:v.leadId||null,programa:v.programa,moneda:v.moneda,monto:c.monto,monto_usd:c.monto/(rate||1),estado:'pendiente',origen,billetera:v.billetera,vencimiento:c.vencimiento}))
+  if(v.pago>0)cuotas.push({venta_id:ventaId,lead_id:v.leadId||null,lanzamiento_id:lanzId,programa:v.programa,moneda:v.moneda,monto:v.pago,monto_usd:v.pago/(rate||1),estado:'cobrado',origen,billetera:v.billetera,comprobante_url,cobrado_at:new Date().toISOString(),vencimiento:new Date().toISOString().slice(0,10)})
+  ;(v.cuotas||[]).forEach(c=>cuotas.push({venta_id:ventaId,lead_id:v.leadId||null,lanzamiento_id:lanzId,programa:v.programa,moneda:v.moneda,monto:c.monto,monto_usd:c.monto/(rate||1),estado:'pendiente',origen,billetera:v.billetera,vencimiento:c.vencimiento}))
   if(cuotas.length){const{error:ce}=await sb.from('cuotas').insert(cuotas);if(ce)throw ce}
   if(v.sena)await sb.from('senas').update({venta_id:ventaId,estado:'aplicada'}).eq('id',v.sena)
   if(v.leadId)await sb.from('leads').update({estado:'Cerrado'}).eq('id',v.leadId)
