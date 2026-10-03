@@ -181,7 +181,7 @@ async function ensureClases(){if(!state.lanz)return
 // null = todos los roles. [] = solo manager/admin.
 const NAV=[
   {g:null,items:[['#/panel','Panel general',null],['#/calendario','Calendario',null],['#/agendas','Todas las agendas',[]],['#/strikes','Strikes',null],['#/guia','Guía',null]]},
-  {g:'Setter',items:[['#/leads','Leads',['setter']],['#/nuevo','Nuevo lead',['setter']],['#/importar','Cargar agenda',['setter','closer']],['#/basecsv','Mi base',['setter']],['#/misagendas','Mis agendas',['setter']],['#/kpis','KPIs diarios',['setter']],['#/sinasesor','Leads sin asesor',[]]]},
+  {g:'Setter',items:[['#/leads','Leads',['setter']],['#/nuevo','Nuevo lead',['setter']],['#/importar','Cargar agenda',['setter','closer']],['#/basecsv','Mi base',['setter']],['#/misagendas','Mis agendas',['setter']],['#/kpis','KPIs',['setter']],['#/sinasesor','Leads sin asesor',[]]]},
   {g:'Closer',items:[['#/triage','Triage',['closer']],['#/reporte','Reporte de llamadas',['closer']],['#/grilla','Grilla de reportes',['closer','setter']],['#/noasignados','Agendas sin closer',[]]]},
   {g:'Ventas',items:[['#/ventas','Ventas',null],['#/senas','Señas',null]]},
   {g:'Marketing',items:[['#/marketing','Rendimiento de contenido',[]]]},
@@ -205,7 +205,7 @@ function head(sub,title,actions=''){return `<div class="top"><div><div class="su
 /* ================= PANEL GENERAL ================= */
 async function renderPanel(){
   view().innerHTML=head('DASHBOARD · '+esc((state.lanz&&state.lanz.nombre)||'LANZAMIENTO'),'Panel general')+`<div class="funnel" id="funnel"></div>
-    <div class="card"><h3>Estado del equipo · acumulado</h3><p class="cdesc">Suma de todo lo que los setters cargaron en KPIs diarios hasta la fecha.</p><div class="funnel" id="kpiresumen"></div></div>
+    <div class="card"><h3>Estado del equipo</h3><p class="cdesc">Último KPI que dejó cada asesor — un solo número por persona, siempre el más actualizado.</p><div class="funnel" id="kpiresumen"></div></div>
     <div class="split"><div class="card" style="margin:0"><h3>Seguimientos de hoy</h3><p class="cdesc">Tu cola priorizada del día.</p><div id="seg"></div></div>
     <div class="card" style="margin:0"><h3>Cobros del lanzamiento</h3><p class="cdesc">Resumen de plata.</p><div id="cob"></div></div></div>`
   loadFunnel()
@@ -251,15 +251,12 @@ async function loadFunnel(){const el=document.getElementById('funnel');if(!el)re
   const cells=[['Leads totales',t,'100%',100],['Confirmaron clase',conf,pc(conf),w(conf)],['Asistieron',asis,pc(asis),w(asis)],['Agendaron call',agen,pc(agen),w(agen)],['Cerraron',cerr,pc(cerr),w(cerr)]]
   el.innerHTML=cells.map(([l,n,p,wd])=>`<div class="fcell"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/></svg><div class="n">${num(n)}</div><div class="l">${l}</div><div class="pct">${p}</div><div class="track"><i style="width:${wd}%"></i></div></div>`).join('')}
 async function loadKpiResumen(){const el=document.getElementById('kpiresumen');if(!el)return
-  const{data}=await sb.from('kpis_diarios').select('setter_id,fecha,leves,fluidos,potenciales,leads_sin_responder').eq('lanzamiento_id',state.lanz.id).limit(10000)
-  const ultimos={}
-  ;(data||[]).forEach(x=>{const s=x.setter_id;if(!s)return
-    if(!ultimos[s]||x.fecha>ultimos[s].fecha)ultimos[s]=x})
-  const filas=Object.values(ultimos)
+  const{data}=await sb.from('kpis_diarios').select('leves,fluidos,potenciales,leads_sin_responder').eq('lanzamiento_id',state.lanz.id).limit(1000)
+  const filas=data||[]
   const sum=k=>filas.reduce((a,x)=>a+Number(x[k]||0),0)
   const cells=[['Sin responder',sum('leads_sin_responder')],['Leves',sum('leves')],['Fluidos',sum('fluidos')],['Potenciales',sum('potenciales')]]
   const t=cells.reduce((a,[,n])=>a+n,0),pc=n=>t?Math.round(n/t*100):0
-  el.innerHTML=(data&&data.length)?cells.map(([l,n])=>`<div class="fcell"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/></svg><div class="n">${num(n)}</div><div class="l">${l}</div><div class="pct">${t?pc(n)+'%':'—'}</div><div class="track"><i style="width:${pc(n)}%"></i></div></div>`).join(''):`<div class="empty" style="padding:16px">Todavía no se cargó ningún KPI.</div>`}
+  el.innerHTML=filas.length?cells.map(([l,n])=>`<div class="fcell"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/></svg><div class="n">${num(n)}</div><div class="l">${l}</div><div class="pct">${t?pc(n)+'%':'—'}</div><div class="track"><i style="width:${pc(n)}%"></i></div></div>`).join(''):`<div class="empty" style="padding:16px">Todavía no se cargó ningún KPI.</div>`}
 async function cobrosResumen(){const today=new Date().toISOString().slice(0,10)
   // Devuelve un objeto por moneda — cada moneda se trackea por separado, sin conversión a USD.
   const{data}=await sb.from('cuotas').select('monto,moneda,estado,vencimiento,origen,venta_id').eq('lanzamiento_id',state.lanz.id).limit(10000)
@@ -509,23 +506,28 @@ async function renderSinAsesor(){
     await sb.from('seguimientos').update({asesor_id:setterId}).eq('lead_id',leadId).eq('tipo','agenda')
     toast('Setter asignado ✓');renderSinAsesor()})}
 
-/* ================= KPIS DIARIOS ================= */
-async function renderKpis(){const today=new Date().toISOString().slice(0,10)
-  view().innerHTML=head('SETTER','KPIs diarios')+`<div class="card"><h3>Cargar KPI del día</h3><p class="cdesc">Se actualizan cada vez que guardás — podés volver a cargar durante el día.</p>
-    <div class="field"><label>Fecha</label><input class="inp" id="k_fecha" type="date" value="${today}"/></div>
+/* ================= KPIS ================= */
+async function renderKpis(){
+  view().innerHTML=head('SETTER','KPIs')+`<div class="card"><h3>Tus números</h3><p class="cdesc">Un solo registro por vos — cada vez que guardás, pisa tu último número. No se acumula historial día a día.</p>
     <div class="row3"><div class="field"><label>Leads asignados</label><input class="inp" id="k_asig" type="number" value="0"/></div><div class="field"><label>Leads contactados</label><input class="inp" id="k_cont" type="number" value="0"/></div><div class="field"><label>Leads sin responder</label><input class="inp" id="k_sinresp" type="number" value="0"/></div></div>
     <div class="row3"><div class="field"><label>Leves</label><input class="inp" id="k_leves" type="number" value="0"/></div><div class="field"><label>Fluidos</label><input class="inp" id="k_fluidos" type="number" value="0"/></div><div class="field"><label>Potenciales</label><input class="inp" id="k_potenciales" type="number" value="0"/></div></div>
-    <div class="row2"><div class="field"><label>Agendas del día</label><input class="inp" id="k_agdia" type="number" value="0"/></div><div class="field"><label>¿Cómo te sentiste el día de hoy?</label><input class="inp" id="k_notas"/></div></div>
-    <div class="actions"><div class="grow"></div><button class="btn primary" id="k_save">Guardar KPIs del día</button></div></div>
-    <div class="tablewrap"><table><thead><tr><th>Fecha</th><th>Setter</th><th>Asig.</th><th>Cont.</th><th>Sin resp.</th><th>Leves</th><th>Fluidos</th><th>Potenc.</th><th>Agendas</th><th>Cargado</th>${isMgr()?'<th></th>':''}</tr></thead><tbody id="khist"><tr><td colspan="${isMgr()?11:10}" class="empty">Cargando…</td></tr></tbody></table></div>`
+    <div class="row2"><div class="field"><label>Agendas</label><input class="inp" id="k_agdia" type="number" value="0"/></div><div class="field"><label>¿Cómo te sentiste el día de hoy?</label><input class="inp" id="k_notas"/></div></div>
+    <div class="actions"><div class="sub2" id="k_last"></div><div class="grow"></div><button class="btn primary" id="k_save">Guardar</button></div></div>
+    ${isMgr()?`<div class="tablewrap"><table><thead><tr><th>Setter</th><th>Asig.</th><th>Cont.</th><th>Sin resp.</th><th>Leves</th><th>Fluidos</th><th>Potenc.</th><th>Agendas</th><th>Cómo se sintió</th><th>Cargado</th><th></th></tr></thead><tbody id="khist"><tr><td colspan="11" class="empty">Cargando…</td></tr></tbody></table></div>`:''}`
+  loadKActual()
   document.getElementById('k_save').onclick=async()=>{const g=id=>document.getElementById(id)
-    const p={setter_id:me.id,lanzamiento_id:state.lanz.id,fecha:g('k_fecha').value,leads_asignados:+g('k_asig').value,leads_contactados:+g('k_cont').value,leads_sin_responder:+g('k_sinresp').value,leves:+g('k_leves').value,fluidos:+g('k_fluidos').value,potenciales:+g('k_potenciales').value,agendas_dia:+g('k_agdia').value,notas:g('k_notas').value.trim()}
-    const{error}=await sb.from('kpis_diarios').upsert(p,{onConflict:'setter_id,fecha,lanzamiento_id'});if(error){toast('Error: '+error.message);return};toast('Guardado ✓');loadKhist()}
-  loadKhist()}
+    const p={setter_id:me.id,lanzamiento_id:state.lanz.id,fecha:new Date().toISOString().slice(0,10),updated_at:new Date().toISOString(),leads_asignados:+g('k_asig').value,leads_contactados:+g('k_cont').value,leads_sin_responder:+g('k_sinresp').value,leves:+g('k_leves').value,fluidos:+g('k_fluidos').value,potenciales:+g('k_potenciales').value,agendas_dia:+g('k_agdia').value,notas:g('k_notas').value.trim()}
+    const{error}=await sb.from('kpis_diarios').upsert(p,{onConflict:'setter_id,lanzamiento_id'});if(error){toast('Error: '+error.message);return};toast('Guardado ✓');loadKActual();if(isMgr())loadKhist()}
+  if(isMgr())loadKhist()}
+async function loadKActual(){
+  const{data:k}=await sb.from('kpis_diarios').select('*').eq('setter_id',me.id).eq('lanzamiento_id',state.lanz.id).maybeSingle()
+  const g=id=>document.getElementById(id)
+  if(k){g('k_asig').value=k.leads_asignados||0;g('k_cont').value=k.leads_contactados||0;g('k_sinresp').value=k.leads_sin_responder||0;g('k_leves').value=k.leves||0;g('k_fluidos').value=k.fluidos||0;g('k_potenciales').value=k.potenciales||0;g('k_agdia').value=k.agendas_dia||0;g('k_notas').value=k.notas||''}
+  const last=document.getElementById('k_last');if(last)last.textContent=k?('Último guardado: '+fmtDateTime(k.updated_at||k.created_at)):'Todavía no cargaste nada en este lanzamiento.'}
 async function loadKhist(){const el=document.getElementById('khist');if(!el)return
-  let q=sb.from('kpis_diarios').select('*').eq('lanzamiento_id',state.lanz.id).order('fecha',{ascending:false}).limit(60);if(!isMgr())q=q.eq('setter_id',me.id)
-  const{data}=await q;el.innerHTML=(data&&data.length)?data.map(k=>`<tr><td class="nm">${esc(k.fecha)}</td><td>${esc(nameOf(k.setter_id)||'—')}</td><td>${k.leads_asignados||0}</td><td>${k.leads_contactados||0}</td><td>${k.leads_sin_responder||0}</td><td>${k.leves||0}</td><td>${k.fluidos||0}</td><td>${k.potenciales||0}</td><td>${k.agendas_dia||0}</td><td class="sub2">${fmtDateTime(k.created_at)}</td>${isMgr()?`<td><button class="pg" data-kdel="${k.id}">Borrar</button></td>`:''}</tr>`).join(''):`<tr><td colspan="${isMgr()?11:10}" class="empty">Sin registros todavía.</td></tr>`
-  if(isMgr())document.querySelectorAll('[data-kdel]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Borrar este registro de KPIs?'))return;const r=await delRow('kpis_diarios',b.dataset.kdel);if(!r.ok){toast(r.msg);return};toast('Borrado ✓');loadKhist()})}
+  const{data}=await sb.from('kpis_diarios').select('*').eq('lanzamiento_id',state.lanz.id).order('updated_at',{ascending:false}).limit(200)
+  el.innerHTML=(data&&data.length)?data.map(k=>`<tr><td class="nm">${esc(nameOf(k.setter_id)||'—')}</td><td>${k.leads_asignados||0}</td><td>${k.leads_contactados||0}</td><td>${k.leads_sin_responder||0}</td><td>${k.leves||0}</td><td>${k.fluidos||0}</td><td>${k.potenciales||0}</td><td>${k.agendas_dia||0}</td><td class="sub2">${esc(k.notas||'—')}</td><td class="sub2">${fmtDateTime(k.updated_at||k.created_at)}</td><td><button class="pg" data-kdel="${k.id}">Borrar</button></td></tr>`).join(''):`<tr><td colspan="11" class="empty">Sin registros todavía.</td></tr>`
+  document.querySelectorAll('[data-kdel]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Borrar el registro de KPIs de este asesor?'))return;const r=await delRow('kpis_diarios',b.dataset.kdel);if(!r.ok){toast(r.msg);return};toast('Borrado ✓');loadKhist()})}
 
 /* ================= MIS AGENDAS (setter) ================= */
 async function renderMisAgendas(){view().innerHTML=head('SETTER','Mis agendas')+`<div class="card"><h3>Agendas asignadas a vos</h3><p class="cdesc">Incluye las que vos cargaste y las que un closer cargó y te asignó porque el lead se agendó solo. Entrá y completá "Contexto para el closer" en las que todavía no lo tengan.</p><div id="ma"></div></div>`
@@ -1231,7 +1233,7 @@ async function renderStrikes(){const canLog=isMgr()||myProfile.rol==='director'
           <h4>Ejemplos</h4>
           <ul>
             <li>No cargar el reporte de la llamada el mismo día.</li>
-            <li>No completar los KPIs diarios, o cargarlos incompletos.</li>
+            <li>No completar los KPIs, o cargarlos incompletos.</li>
             <li>Llegar tarde a una call agendada sin avisar antes.</li>
             <li>No presentarse a las reuniones dailys.</li>
             <li>No cargar las agendas en el día.</li>
@@ -1340,7 +1342,7 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
   <div class="gcard"><ol class="steps">
     <li><b>Entrá al link del CRM</b> y creá tu cuenta con tu email.<div class="d">Primera vez: "Crear una" → email + contraseña + tu nombre.</div></li>
     <li><b>Avisá al manager</b> que te registraste, para que te asigne tu <b>rol</b>.</li>
-    <li><b>Menú izquierdo</b> = secciones. Se filtra según tu rol: cada uno ve las pantallas de carga que le corresponden (setter no ve Triage, closer no ve KPIs diarios, etc.), pero <b>Ventas, Señas, Cuotas, Facturación, Comisiones y Strikes se ven completos para todo el equipo</b> — la plata y el estado del equipo no se esconden.</li>
+    <li><b>Menú izquierdo</b> = secciones. Se filtra según tu rol: cada uno ve las pantallas de carga que le corresponden (setter no ve Triage, closer no ve KPIs, etc.), pero <b>Ventas, Señas, Cuotas, Facturación, Comisiones y Strikes se ven completos para todo el equipo</b> — la plata y el estado del equipo no se esconden.</li>
     <li><b>Arriba a la derecha</b> están los botones de acción (ej: + Nuevo lead).</li>
   </ol>
   <div class="note">Regla de oro: <b>cargá todo en el momento</b> (lead, llamada, venta, cobro). El CRM sirve solo si los datos están al día.</div></div>
@@ -1356,7 +1358,7 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
     <li><b>Mis agendas</b>: lista aparte con las agendas que tenés asignadas — incluye las tuyas y las que un closer cargó porque el lead se agendó solo (sin que vos le hayas escrito antes). Cada una muestra un cartel <b>"sin contexto"</b> o <b>"con contexto"</b>; entrá a las que digan "sin contexto" y completá Situación/Objetivos/Dolores apenas puedas.</li>
     <li>Abrí el lead y <b>cambiá el Estado</b> a medida que avanza.</li>
     <li>Cargá un <b>próximo seguimiento</b> (fecha + nota) dentro del lead.</li>
-    <li><b>KPIs diarios</b> → cargá: leads asignados, contactados, sin responder, leves, fluidos, potenciales, agendas del día, y "¿Cómo te sentiste el día de hoy?" (un mini autoreporte, no un dato duro).</li>
+    <li><b>KPIs</b> → cargá: leads asignados, contactados, sin responder, leves, fluidos, potenciales, agendas, y "¿Cómo te sentiste el día de hoy?" (un mini autoreporte, no un dato duro). Es un solo registro tuyo: cada vez que guardás, actualiza tu último número — no hace falta cargarlo de nuevo si no cambió nada.</li>
   </ol>
   <div class="flow"><span class="st">Nuevo</span><span class="ar">→</span><span class="st">Contactado</span><span class="ar">→</span><span class="st">Confirmó clase</span><span class="ar">→</span><span class="st">Asistió</span><span class="ar">→</span><span class="st">Agendó</span></div></div>
 
@@ -1381,7 +1383,7 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
     <li><b>Señas → + Registrar seña</b>: reserva del cliente. No cuenta hasta que la venta pague su 1ª cuota.</li>
     <li><b>Cobros → Cuotas</b>: cuando entra una cuota, tocá <b>"Marcar cobrada"</b>.</li>
     <li><b>Facturación</b>: facturación y cash <b>por moneda</b> (un bloque separado por cada una) y cash por billetera. No hay un total mezclado entre monedas.</li>
-    <li>Ventas, Señas, Cuotas, Reportes de llamada y KPIs diarios muestran una columna <b>"Cargado"</b> con la fecha y hora exacta en que se guardó el registro — es automática, nadie la carga a mano.</li>
+    <li>Ventas, Señas, Cuotas, Reportes de llamada y KPIs muestran una columna <b>"Cargado"</b> con la fecha y hora exacta en que se guardó el registro — es automática, nadie la carga a mano.</li>
   </ol></div>
 
   <h2 id="g_str">Strikes</h2>
@@ -1403,7 +1405,7 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
     <li><b>Comisiones → Equipo · roles y comisiones</b>: rol + % setter / % closer de cada uno.<div class="d">Si el % está en 0, esa persona no genera comisión.</div></li>
     <li><b>A pagar por origen</b>: comisiones a pagar por cada lanzamiento / funnel / referidos.</li>
     <li>Tocá el <b>nombre</b> de una persona → su detalle → marcá comisiones <b>pagadas</b> línea por línea, o cargá un <b>pago manual</b> (monto suelto, parcial o total) que se resta directo del pendiente.</li>
-    <li>Sos el único que puede <b>editar y borrar</b> Cuotas, Seguimientos, Reportes de llamada y KPIs diarios (botones "Editar"/"Borrar" en cada tabla, solo visibles para vos). Leads, Ventas y Señas ya se podían editar/borrar desde antes.</li>
+    <li>Sos el único que puede <b>editar y borrar</b> Cuotas, Seguimientos, Reportes de llamada y KPIs (botones "Editar"/"Borrar" en cada tabla, solo visibles para vos). Leads, Ventas y Señas ya se podían editar/borrar desde antes.</li>
     <li><b>Strikes</b>: junto con los directores, sos quien registra advertencias y strikes del equipo (ver sección aparte).</li>
   </ol></div>
 
