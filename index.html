@@ -1,4 +1,5 @@
 <!doctype html><html lang="es"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/><meta http-equiv="Pragma" content="no-cache"/><meta http-equiv="Expires" content="0"/>
 <title>NAVE CRM</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSI+PGcgZmlsbD0iIzQ2Y2ZlNiI+PHBhdGggZD0iTTIwLjQgOC42IEwzMi42IDIwLjQgUTI3LjQgMjAgMjUuNyAyMi4yIFEyNC40IDIzLjkgMjQgMjYuNiBRMjMuMSAyMi42IDIwLjQgMjEuNCBRMTcuNyAyMC4yIDE0IDIwLjggWiIvPjxwYXRoIGQ9Ik0yNCAyNi40IEMzMS42IDMzLjQgMjkuNCA0Mi4yIDE0LjYgNDMuNCBDMjMuOCA0MCAyNS4yIDMxLjYgMjEuOCAyNy42IFoiLz48L2c+PC9zdmc+"/>
 <style>
@@ -468,17 +469,22 @@ async function importarBaseCSV(){
         if(vistosEnArchivo.has(c.dedup_key)){repetidosArchivo++;return}
         vistosEnArchivo.add(c.dedup_key)}
       nuevos.push(c)})
-    let cargados=0
+    let cargados=0,saltadosPorConflicto=0
     for(let i=0;i<nuevos.length;i+=300){const lote=nuevos.slice(i,i+300)
       const{error}=await sb.from('leads').insert(lote)
-      if(error){out.innerHTML=`<div class="empty">Error cargando: ${esc(error.message)}</div>`;return}
-      cargados+=lote.length}
+      if(!error){cargados+=lote.length;continue}
+      // Si el lote entero falló (típicamente porque otro asesor cargó justo
+      // en el medio el mismo teléfono), reintentamos fila por fila para no
+      // perder el resto del lote por una sola que choca con algo ya cargado.
+      for(const fila of lote){
+        const{error:e2}=await sb.from('leads').insert([fila])
+        if(e2)saltadosPorConflicto++;else cargados++}}
     let actualizados=0
     for(const a of actualizar){
       const{error}=await sb.from('leads').update(a.patch).eq('id',a.id)
       if(error){out.innerHTML=`<div class="empty">Error actualizando: ${esc(error.message)}</div>`;return}
       actualizados++}
-    out.innerHTML=`<div class="empty" style="color:var(--ink)">✓ ${cargados} leads cargados a tu base${actualizados?`, ${actualizados} actualizados`:''}${omitidos?`, ${omitidos} omitidos (teléfono ya existía)`:''}${repetidosArchivo?`, ${repetidosArchivo} repetidos dentro del mismo archivo (se cargó solo el primero)`:''}${vacios?`, ${vacios} filas sin teléfono ignoradas`:''}.</div>`
+    out.innerHTML=`<div class="empty" style="color:var(--ink)">✓ ${cargados} leads cargados a tu base${actualizados?`, ${actualizados} actualizados`:''}${omitidos?`, ${omitidos} omitidos (teléfono ya existía)`:''}${repetidosArchivo?`, ${repetidosArchivo} repetidos dentro del mismo archivo (se cargó solo el primero)`:''}${saltadosPorConflicto?`, ${saltadosPorConflicto} salteados (alguien más cargó ese teléfono justo antes)`:''}${vacios?`, ${vacios} filas sin teléfono ignoradas`:''}.</div>`
     inp.value=''
   }catch(e){out.innerHTML=`<div class="empty">Error: ${esc(e.message||String(e))}</div>`}
   finally{btn.textContent='Importar';btn.disabled=false}}
