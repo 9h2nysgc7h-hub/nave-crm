@@ -518,7 +518,8 @@ async function renderKpis(){
     <div class="row3"><div class="field"><label>Sin responder</label><input class="inp" id="k_sinresp" type="number" value="0"/></div><div class="field"><label>Leves</label><input class="inp" id="k_leves" type="number" value="0"/></div><div class="field"><label>Fluidos</label><input class="inp" id="k_fluidos" type="number" value="0"/></div></div>
     <div class="row2"><div class="field"><label>Potenciales</label><input class="inp" id="k_potenciales" type="number" value="0"/></div><div class="field"><label>Agendas</label><input class="inp" id="k_agdia" type="number" value="0"/></div></div>
     <div class="actions"><div class="sub2" id="k_last"></div><div class="grow"></div><button class="btn primary" id="k_save">Guardar</button></div></div>
-    ${isMgr()?`<div class="tablewrap"><table><thead><tr><th>Setter</th><th>Sin resp.</th><th>Leves</th><th>Fluidos</th><th>Potenc.</th><th>Agendas</th><th>Cargado</th><th></th></tr></thead><tbody id="khist"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table></div>`:''}`
+    ${isMgr()?`<div class="card"><p class="cdesc" style="margin:0">Ordenado por el que más carga reportó. Las filas marcadas en rojo tienen más sumado en KPIs que leads reales asignados — ahí hay un número mal cargado, no es un cálculo que arreglemos con código: hay que pedirle a esa persona que vuelva a entrar y cargue el número correcto.</p></div>
+    <div class="tablewrap"><table><thead><tr><th>Setter</th><th>Sin resp.</th><th>Leves</th><th>Fluidos</th><th>Potenc.</th><th>Agendas</th><th>Leads reales</th><th>Cargado</th><th></th></tr></thead><tbody id="khist"><tr><td colspan="9" class="empty">Cargando…</td></tr></tbody></table></div>`:''}`
   loadKActual()
   document.getElementById('k_save').onclick=async()=>{const g=id=>document.getElementById(id)
     const p={setter_id:me.id,lanzamiento_id:state.lanz.id,fecha:new Date().toISOString().slice(0,10),updated_at:new Date().toISOString(),leads_sin_responder:+g('k_sinresp').value,leves:+g('k_leves').value,fluidos:+g('k_fluidos').value,potenciales:+g('k_potenciales').value,agendas_dia:+g('k_agdia').value}
@@ -530,8 +531,13 @@ async function loadKActual(){
   if(k){g('k_sinresp').value=k.leads_sin_responder||0;g('k_leves').value=k.leves||0;g('k_fluidos').value=k.fluidos||0;g('k_potenciales').value=k.potenciales||0;g('k_agdia').value=k.agendas_dia||0}
   const last=document.getElementById('k_last');if(last)last.textContent=k?('Último guardado: '+fmtDateTime(k.updated_at||k.created_at)):'Todavía no cargaste nada en este lanzamiento.'}
 async function loadKhist(){const el=document.getElementById('khist');if(!el)return
-  const{data}=await sb.from('kpis_diarios').select('*').eq('lanzamiento_id',state.lanz.id).order('fecha',{ascending:false}).limit(200)
-  el.innerHTML=(data&&data.length)?data.map(k=>`<tr><td class="nm">${esc(nameOf(k.setter_id)||'—')}</td><td>${k.leads_sin_responder||0}</td><td>${k.leves||0}</td><td>${k.fluidos||0}</td><td>${k.potenciales||0}</td><td>${k.agendas_dia||0}</td><td class="sub2">${fmtDateTime(k.updated_at||k.created_at)}</td><td><button class="pg" data-kdel="${k.id}">Borrar</button></td></tr>`).join(''):`<tr><td colspan="8" class="empty">Sin registros todavía.</td></tr>`
+  const{data}=await sb.from('kpis_diarios').select('*').eq('lanzamiento_id',state.lanz.id).limit(200)
+  const{data:leadsData}=await sb.from('leads').select('asesor_id').eq('lanzamiento_id',state.lanz.id).limit(10000)
+  const realPorSetter={}
+  ;(leadsData||[]).forEach(l=>{if(l.asesor_id)realPorSetter[l.asesor_id]=(realPorSetter[l.asesor_id]||0)+1})
+  const filas=(data||[]).map(k=>({...k,total:(k.leads_sin_responder||0)+(k.leves||0)+(k.fluidos||0)+(k.potenciales||0)})).sort((a,b)=>b.total-a.total)
+  el.innerHTML=filas.length?filas.map(k=>{const real=realPorSetter[k.setter_id]||0,sospechoso=k.total>real
+    return `<tr${sospechoso?' style="background:rgba(240,101,79,.1)"':''}><td class="nm">${esc(nameOf(k.setter_id)||'—')}</td><td>${k.leads_sin_responder||0}</td><td>${k.leves||0}</td><td>${k.fluidos||0}</td><td>${k.potenciales||0}</td><td>${k.agendas_dia||0}</td><td class="sub2"${sospechoso?' style="color:var(--danger)"':''}>${real}${sospechoso?' ⚠':''}</td><td class="sub2">${fmtDateTime(k.updated_at||k.created_at)}</td><td><button class="pg" data-kdel="${k.id}">Borrar</button></td></tr>`}).join(''):`<tr><td colspan="9" class="empty">Sin registros todavía.</td></tr>`
   document.querySelectorAll('[data-kdel]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Borrar el registro de KPIs de este asesor?'))return;const r=await delRow('kpis_diarios',b.dataset.kdel);if(!r.ok){toast(r.msg);return};toast('Borrado ✓');loadKhist()})}
 
 /* ================= MIS AGENDAS (setter) ================= */
