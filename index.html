@@ -251,10 +251,16 @@ async function loadFunnel(){const el=document.getElementById('funnel');if(!el)re
   const cells=[['Leads totales',t,'100%',100],['Confirmaron clase',conf,pc(conf),w(conf)],['Asistieron',asis,pc(asis),w(asis)],['Agendaron call',agen,pc(agen),w(agen)],['Cerraron',cerr,pc(cerr),w(cerr)]]
   el.innerHTML=cells.map(([l,n,p,wd])=>`<div class="fcell"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/></svg><div class="n">${num(n)}</div><div class="l">${l}</div><div class="pct">${p}</div><div class="track"><i style="width:${wd}%"></i></div></div>`).join('')}
 async function loadKpiResumen(){const el=document.getElementById('kpiresumen');if(!el)return
-  const{data}=await sb.from('kpis_diarios').select('leves,fluidos,potenciales,leads_sin_responder').eq('lanzamiento_id',state.lanz.id).limit(1000)
-  const filas=data||[]
+  const{data}=await sb.from('kpis_diarios').select('setter_id,fecha,leves,fluidos,potenciales,leads_sin_responder,agendas_dia').eq('lanzamiento_id',state.lanz.id).limit(10000)
+  // Por si todavía no corriste la migración que deja un solo registro por
+  // asesor: nos quedamos acá igual con el más reciente de cada uno, para
+  // no sumar historial viejo por error mientras tanto.
+  const ultimos={}
+  ;(data||[]).forEach(x=>{const s=x.setter_id;if(!s)return
+    if(!ultimos[s]||x.fecha>=ultimos[s].fecha)ultimos[s]=x})
+  const filas=Object.values(ultimos)
   const sum=k=>filas.reduce((a,x)=>a+Number(x[k]||0),0)
-  const cells=[['Sin responder',sum('leads_sin_responder')],['Leves',sum('leves')],['Fluidos',sum('fluidos')],['Potenciales',sum('potenciales')]]
+  const cells=[['Sin responder',sum('leads_sin_responder')],['Leves',sum('leves')],['Fluidos',sum('fluidos')],['Potenciales',sum('potenciales')],['Agendas',sum('agendas_dia')]]
   const t=cells.reduce((a,[,n])=>a+n,0),pc=n=>t?Math.round(n/t*100):0
   el.innerHTML=filas.length?cells.map(([l,n])=>`<div class="fcell"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/></svg><div class="n">${num(n)}</div><div class="l">${l}</div><div class="pct">${t?pc(n)+'%':'—'}</div><div class="track"><i style="width:${pc(n)}%"></i></div></div>`).join(''):`<div class="empty" style="padding:16px">Todavía no se cargó ningún KPI.</div>`}
 async function cobrosResumen(){const today=new Date().toISOString().slice(0,10)
@@ -508,25 +514,24 @@ async function renderSinAsesor(){
 
 /* ================= KPIS ================= */
 async function renderKpis(){
-  view().innerHTML=head('SETTER','KPIs')+`<div class="card"><h3>Tus números</h3><p class="cdesc">Un solo registro por vos — cada vez que guardás, pisa tu último número. No se acumula historial día a día.</p>
-    <div class="row3"><div class="field"><label>Leads asignados</label><input class="inp" id="k_asig" type="number" value="0"/></div><div class="field"><label>Leads contactados</label><input class="inp" id="k_cont" type="number" value="0"/></div><div class="field"><label>Leads sin responder</label><input class="inp" id="k_sinresp" type="number" value="0"/></div></div>
-    <div class="row3"><div class="field"><label>Leves</label><input class="inp" id="k_leves" type="number" value="0"/></div><div class="field"><label>Fluidos</label><input class="inp" id="k_fluidos" type="number" value="0"/></div><div class="field"><label>Potenciales</label><input class="inp" id="k_potenciales" type="number" value="0"/></div></div>
-    <div class="row2"><div class="field"><label>Agendas</label><input class="inp" id="k_agdia" type="number" value="0"/></div><div class="field"><label>¿Cómo te sentiste el día de hoy?</label><input class="inp" id="k_notas"/></div></div>
+  view().innerHTML=head('SETTER','KPIs')+`<div class="card"><h3>Tus números</h3><p class="cdesc">Un solo registro por vos — cada vez que guardás, pisa tu último número (no se suma a lo anterior). No se acumula historial día a día.</p>
+    <div class="row3"><div class="field"><label>Sin responder</label><input class="inp" id="k_sinresp" type="number" value="0"/></div><div class="field"><label>Leves</label><input class="inp" id="k_leves" type="number" value="0"/></div><div class="field"><label>Fluidos</label><input class="inp" id="k_fluidos" type="number" value="0"/></div></div>
+    <div class="row2"><div class="field"><label>Potenciales</label><input class="inp" id="k_potenciales" type="number" value="0"/></div><div class="field"><label>Agendas</label><input class="inp" id="k_agdia" type="number" value="0"/></div></div>
     <div class="actions"><div class="sub2" id="k_last"></div><div class="grow"></div><button class="btn primary" id="k_save">Guardar</button></div></div>
-    ${isMgr()?`<div class="tablewrap"><table><thead><tr><th>Setter</th><th>Asig.</th><th>Cont.</th><th>Sin resp.</th><th>Leves</th><th>Fluidos</th><th>Potenc.</th><th>Agendas</th><th>Cómo se sintió</th><th>Cargado</th><th></th></tr></thead><tbody id="khist"><tr><td colspan="11" class="empty">Cargando…</td></tr></tbody></table></div>`:''}`
+    ${isMgr()?`<div class="tablewrap"><table><thead><tr><th>Setter</th><th>Sin resp.</th><th>Leves</th><th>Fluidos</th><th>Potenc.</th><th>Agendas</th><th>Cargado</th><th></th></tr></thead><tbody id="khist"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table></div>`:''}`
   loadKActual()
   document.getElementById('k_save').onclick=async()=>{const g=id=>document.getElementById(id)
-    const p={setter_id:me.id,lanzamiento_id:state.lanz.id,fecha:new Date().toISOString().slice(0,10),updated_at:new Date().toISOString(),leads_asignados:+g('k_asig').value,leads_contactados:+g('k_cont').value,leads_sin_responder:+g('k_sinresp').value,leves:+g('k_leves').value,fluidos:+g('k_fluidos').value,potenciales:+g('k_potenciales').value,agendas_dia:+g('k_agdia').value,notas:g('k_notas').value.trim()}
+    const p={setter_id:me.id,lanzamiento_id:state.lanz.id,fecha:new Date().toISOString().slice(0,10),updated_at:new Date().toISOString(),leads_sin_responder:+g('k_sinresp').value,leves:+g('k_leves').value,fluidos:+g('k_fluidos').value,potenciales:+g('k_potenciales').value,agendas_dia:+g('k_agdia').value}
     const{error}=await sb.from('kpis_diarios').upsert(p,{onConflict:'setter_id,lanzamiento_id'});if(error){toast('Error: '+error.message);return};toast('Guardado ✓');loadKActual();if(isMgr())loadKhist()}
   if(isMgr())loadKhist()}
 async function loadKActual(){
   const{data:k}=await sb.from('kpis_diarios').select('*').eq('setter_id',me.id).eq('lanzamiento_id',state.lanz.id).maybeSingle()
   const g=id=>document.getElementById(id)
-  if(k){g('k_asig').value=k.leads_asignados||0;g('k_cont').value=k.leads_contactados||0;g('k_sinresp').value=k.leads_sin_responder||0;g('k_leves').value=k.leves||0;g('k_fluidos').value=k.fluidos||0;g('k_potenciales').value=k.potenciales||0;g('k_agdia').value=k.agendas_dia||0;g('k_notas').value=k.notas||''}
+  if(k){g('k_sinresp').value=k.leads_sin_responder||0;g('k_leves').value=k.leves||0;g('k_fluidos').value=k.fluidos||0;g('k_potenciales').value=k.potenciales||0;g('k_agdia').value=k.agendas_dia||0}
   const last=document.getElementById('k_last');if(last)last.textContent=k?('Último guardado: '+fmtDateTime(k.updated_at||k.created_at)):'Todavía no cargaste nada en este lanzamiento.'}
 async function loadKhist(){const el=document.getElementById('khist');if(!el)return
-  const{data}=await sb.from('kpis_diarios').select('*').eq('lanzamiento_id',state.lanz.id).order('updated_at',{ascending:false}).limit(200)
-  el.innerHTML=(data&&data.length)?data.map(k=>`<tr><td class="nm">${esc(nameOf(k.setter_id)||'—')}</td><td>${k.leads_asignados||0}</td><td>${k.leads_contactados||0}</td><td>${k.leads_sin_responder||0}</td><td>${k.leves||0}</td><td>${k.fluidos||0}</td><td>${k.potenciales||0}</td><td>${k.agendas_dia||0}</td><td class="sub2">${esc(k.notas||'—')}</td><td class="sub2">${fmtDateTime(k.updated_at||k.created_at)}</td><td><button class="pg" data-kdel="${k.id}">Borrar</button></td></tr>`).join(''):`<tr><td colspan="11" class="empty">Sin registros todavía.</td></tr>`
+  const{data}=await sb.from('kpis_diarios').select('*').eq('lanzamiento_id',state.lanz.id).order('fecha',{ascending:false}).limit(200)
+  el.innerHTML=(data&&data.length)?data.map(k=>`<tr><td class="nm">${esc(nameOf(k.setter_id)||'—')}</td><td>${k.leads_sin_responder||0}</td><td>${k.leves||0}</td><td>${k.fluidos||0}</td><td>${k.potenciales||0}</td><td>${k.agendas_dia||0}</td><td class="sub2">${fmtDateTime(k.updated_at||k.created_at)}</td><td><button class="pg" data-kdel="${k.id}">Borrar</button></td></tr>`).join(''):`<tr><td colspan="8" class="empty">Sin registros todavía.</td></tr>`
   document.querySelectorAll('[data-kdel]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Borrar el registro de KPIs de este asesor?'))return;const r=await delRow('kpis_diarios',b.dataset.kdel);if(!r.ok){toast(r.msg);return};toast('Borrado ✓');loadKhist()})}
 
 /* ================= MIS AGENDAS (setter) ================= */
@@ -1358,7 +1363,7 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
     <li><b>Mis agendas</b>: lista aparte con las agendas que tenés asignadas — incluye las tuyas y las que un closer cargó porque el lead se agendó solo (sin que vos le hayas escrito antes). Cada una muestra un cartel <b>"sin contexto"</b> o <b>"con contexto"</b>; entrá a las que digan "sin contexto" y completá Situación/Objetivos/Dolores apenas puedas.</li>
     <li>Abrí el lead y <b>cambiá el Estado</b> a medida que avanza.</li>
     <li>Cargá un <b>próximo seguimiento</b> (fecha + nota) dentro del lead.</li>
-    <li><b>KPIs</b> → cargá: leads asignados, contactados, sin responder, leves, fluidos, potenciales, agendas, y "¿Cómo te sentiste el día de hoy?" (un mini autoreporte, no un dato duro). Es un solo registro tuyo: cada vez que guardás, actualiza tu último número — no hace falta cargarlo de nuevo si no cambió nada.</li>
+    <li><b>KPIs</b> → cargá: sin responder, leves, fluidos, potenciales y agendas. Es un solo registro tuyo: cada vez que guardás, pisa tu último número (no se suma a lo anterior) — si cargaste 1 hoy y mañana cargás 2, queda en 2, no en 3.</li>
   </ol>
   <div class="flow"><span class="st">Nuevo</span><span class="ar">→</span><span class="st">Contactado</span><span class="ar">→</span><span class="st">Confirmó clase</span><span class="ar">→</span><span class="st">Asistió</span><span class="ar">→</span><span class="st">Agendó</span></div></div>
 
