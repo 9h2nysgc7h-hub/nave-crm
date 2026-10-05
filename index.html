@@ -104,23 +104,15 @@ const SUPABASE_URL = 'https://mnsbmrzeltolhkzdbaop.supabase.co'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1uc2JtcnplbHRvbGhremRiYW9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5NTEyODcsImV4cCI6MjEwMTUyNzI4N30.Zb0JD1dx2xiqmc_-mvtOU6dYhtjV8MYq7tbLg8r1Wgg'
 
 const ROCKET=`<svg viewBox="0 0 48 48" fill="none"><g fill="currentColor"><path d="M20.4 8.6 L32.6 20.4 Q27.4 20 25.7 22.2 Q24.4 23.9 24 26.6 Q23.1 22.6 20.4 21.4 Q17.7 20.2 14 20.8 Z"/><path d="M24 26.4 C31.6 33.4 29.4 42.2 14.6 43.4 C23.8 40 25.2 31.6 21.8 27.6 Z"/></g></svg>`
-const ESTADOS=['Nuevo','Contactado','Confirmó clase','Asistió','Agendó','Cerrado','Perdido']
-const TEMPS=['fluido','potencial','leve'];const MONEDAS=['USD','ARS','EUR'];const FORMAS=['Un pago','2 cuotas','3 cuotas'];const PAGE=50
 const root=document.getElementById('root')
 let sb=null,me=null,myProfile=null
-let state={page:0,q:'',temp:'',estado:'',mine:false,total:0,leads:[],setters:[],lanz:null,clases:[],ctxQ:'',ctxFilter:'',fichas:[]}
+let state={setters:[],lanz:null,ctxQ:'',ctxFilter:'',fichas:[]}
 const esc=s=>(s??'').toString().replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
 const initials=n=>(n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase()
 const isMgr=()=>myProfile&&(myProfile.rol==='manager'||myProfile.rol==='admin')
-const money=n=>'US$ '+(Number(n||0)).toLocaleString('es',{minimumFractionDigits:2,maximumFractionDigits:2})
-const fmtCur=(n,mon)=>(mon||'USD')+' '+(Number(n||0)).toLocaleString('es',{minimumFractionDigits:2,maximumFractionDigits:2})
 const num=n=>(Number(n||0)).toLocaleString('es')
 const nameOf=id=>{const s=state.setters.find(x=>x.id===id);return s?s.nombre:null}
 const rolOf=id=>{const s=state.setters.find(x=>x.id===id);return s?s.rol:null}
-const CANALES=[['lanzamiento','Lanzamiento'],['funnel','Funnel'],['referido','Referido']]
-const EQUIPOS=[['','— sin equipo —'],['nexus','Nexus'],['puente','Puente']]
-const equipoLabel=e=>e==='nexus'?'Nexus':e==='puente'?'Puente':'—'
-const directorDe=eq=>eq?state.setters.find(p=>p.rol==='director'&&p.equipo===eq):null
 // Supabase no tira error si RLS bloquea un update/delete: simplemente afecta 0 filas.
 // Estos helpers chequean que realmente se haya afectado algo y avisan si no.
 async function delRow(table,id){const{data,error}=await sb.from(table).delete().eq('id',id).select('id')
@@ -131,9 +123,6 @@ async function updRow(table,id,patch){const{data,error}=await sb.from(table).upd
   if(error)return{ok:false,msg:error.message}
   if(!data||!data.length)return{ok:false,msg:'No se guardó nada — probablemente no tenés permiso (revisá las políticas RLS en Supabase).'}
   return{ok:true}}
-function srcVentas(q,val){if(!val||val==='all')return q;if(val==='funnel'||val==='referido')return q.eq('canal',val);return q.eq('lanzamiento_id',val)}
-function srcEmbed(q,val){if(!val||val==='all')return q;if(val==='funnel'||val==='referido')return q.eq('ventas.canal',val);return q.eq('ventas.lanzamiento_id',val)}
-function srcOptions(sel,lanzs){return `<option value="all" ${sel==='all'?'selected':''}>Todos</option>`+(lanzs||[]).map(l=>`<option value="${l.id}" ${sel===l.id?'selected':''}>${lanzLabel(l)}</option>`).join('')+`<option value="funnel" ${sel==='funnel'?'selected':''}>Funnel</option><option value="referido" ${sel==='referido'?'selected':''}>Referidos</option>`}
 function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1900)}
 function fmtDate(s){if(!s)return'—';const d=new Date(s),n=new Date();if(d.toDateString()===n.toDateString())return'hoy '+d.toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'});return d.toLocaleDateString('es',{day:'2-digit',month:'2-digit'})}
 // Fecha y hora exacta de carga (created_at) — siempre con hora, a diferencia de fmtDate.
@@ -166,28 +155,18 @@ async function afterLogin(session){me=session.user
   try{const{data:prof}=await sb.from('profiles').select('*').eq('id',me.id).maybeSingle();if(prof)myProfile=prof}catch(e){console.error('profile',e)}
   if(!myProfile)myProfile={nombre:(me.email||'Usuario'),rol:'setter'}
   try{await ensureLanzamiento()}catch(e){console.error('lanz',e)}
-  try{await ensureClases()}catch(e){console.error('clases',e)}
-  try{const{data:setters}=await sb.from('profiles').select('id,nombre,rol,equipo,com_setter_pct,com_closer_pct,com_director_pct').eq('activo',true);state.setters=setters||[]}catch(e){console.error('setters',e)}
+  try{const{data:setters}=await sb.from('profiles').select('id,nombre,rol').eq('activo',true);state.setters=setters||[]}catch(e){console.error('setters',e)}
   if(!location.hash||location.hash==='#')location.hash='#/panel'
   renderShell();route()}
 async function ensureLanzamiento(){let{data}=await sb.from('lanzamientos').select('*').eq('activo',true).order('created_at',{ascending:false}).limit(1)
   if(data&&data[0]){state.lanz=data[0];return}
   if(isMgr()){const{data:n}=await sb.from('lanzamientos').insert({nombre:'Lanzamiento actual',activo:true}).select().single();state.lanz=n}}
-async function ensureClases(){if(!state.lanz)return
-  let{data}=await sb.from('clases').select('*').eq('lanzamiento_id',state.lanz.id).order('numero')
-  if((!data||!data.length)&&isMgr()){await sb.from('clases').insert([1,2,3].map(nu=>({lanzamiento_id:state.lanz.id,numero:nu,titulo:'Clase '+nu})));const r=await sb.from('clases').select('*').eq('lanzamiento_id',state.lanz.id).order('numero');data=r.data}
-  state.clases=data||[]}
 
 /* ---------- SHELL + ROUTER ---------- */
 // Tercer elemento de cada item = roles (aparte de manager/admin, que siempre ven todo) que lo ven.
 // null = todos los roles. [] = solo manager/admin.
 const NAV=[
-  {g:null,items:[['#/panel','Panel general',null],['#/calendario','Calendario',null],['#/agendas','Todas las agendas',[]],['#/contexto','Contexto de leads',['setter','closer']],['#/strikes','Strikes',null],['#/guia','Guía',null]]},
-  {g:'Setter',items:[['#/leads','Leads',['setter']],['#/nuevo','Nuevo lead',['setter']],['#/importar','Cargar agenda',['setter','closer']],['#/basecsv','Mi base',['setter']],['#/misagendas','Mis agendas',['setter']],['#/kpis','KPIs',['setter']],['#/sinasesor','Leads sin asesor',[]]]},
-  {g:'Closer',items:[['#/triage','Triage',['closer']],['#/reporte','Reporte de llamadas',['closer']],['#/grilla','Grilla de reportes',['closer','setter']],['#/noasignados','Agendas sin closer',[]]]},
-  {g:'Ventas',items:[['#/ventas','Ventas',null],['#/senas','Señas',null]]},
-  {g:'Marketing',items:[['#/marketing','Rendimiento de contenido',[]]]},
-  {g:'Cobros',items:[['#/cobros','Cuotas y seguimientos',null],['#/facturacion','Facturación',null],['#/comisiones','Comisiones',null]]}]
+  {g:null,items:[['#/panel','Panel general',null],['#/kpis','KPIs',['setter']],['#/contexto','Contexto de leads',['setter','closer']],['#/strikes','Strikes',null],['#/equipo','Equipo',[]],['#/guia','Guía',null]]}]
 function renderShell(){
   const canSee=roles=>isMgr()||!roles||roles.includes(myProfile.rol)
   const nav=NAV.map(s=>{const items=s.items.filter(([,,roles])=>canSee(roles));if(!items.length)return ''
@@ -200,58 +179,16 @@ function renderShell(){
   document.getElementById('so').onclick=()=>sb.auth.signOut();window.onhashchange=route}
 function setActive(){root.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('on',a.dataset.h===location.hash))}
 function route(){setActive();const h=location.hash
-  const map={'#/panel':renderPanel,'#/calendario':renderCalendario,'#/agendas':renderAgendas,'#/contexto':renderContexto,'#/guia':renderGuia,'#/strikes':renderStrikes,'#/leads':renderLeads,'#/nuevo':()=>openLeadModal(),'#/importar':renderImport,'#/basecsv':renderImportarBase,'#/misagendas':renderMisAgendas,'#/sinasesor':renderSinAsesor,'#/kpis':renderKpis,'#/triage':renderTriage,'#/reporte':renderReporte,'#/grilla':renderGrilla,'#/noasignados':renderNoAsignados,'#/ventas':renderVentas,'#/senas':renderSenas,'#/comisiones':renderComisiones,'#/facturacion':renderFacturacion,'#/marketing':renderMarketing,'#/cobros':renderCobros}
+  const map={'#/panel':renderPanel,'#/contexto':renderContexto,'#/guia':renderGuia,'#/strikes':renderStrikes,'#/kpis':renderKpis,'#/equipo':renderEquipo}
   ;(map[h]||renderPanel)()}
 function head(sub,title,actions=''){return `<div class="top"><div><div class="sub">${sub}</div><h1>${title}</h1></div><div class="grow"></div>${actions}</div>`}
 
 /* ================= PANEL GENERAL ================= */
 async function renderPanel(){
-  view().innerHTML=head('DASHBOARD · '+esc((state.lanz&&state.lanz.nombre)||'LANZAMIENTO'),'Panel general')+`<div class="funnel" id="funnel"></div>
-    <div class="card"><h3>Estado del equipo</h3><p class="cdesc">Último KPI que dejó cada asesor — un solo número por persona, siempre el más actualizado.</p><div class="funnel" id="kpiresumen"></div></div>
-    <div class="split"><div class="card" style="margin:0"><h3>Seguimientos de hoy</h3><p class="cdesc">Tu cola priorizada del día.</p><div id="seg"></div></div>
-    <div class="card" style="margin:0"><h3>Cobros del lanzamiento</h3><p class="cdesc">Resumen de plata.</p><div id="cob"></div></div></div>`
-  loadFunnel()
-  loadKpiResumen()
-  // seguimientos hoy
-  const today=new Date().toISOString().slice(0,10)
-  let sq=sb.from('seguimientos').select('*,leads(nombre,contacto)').eq('hecho',false).lte('fecha_programada',today).order('fecha_programada').limit(30)
-  if(!isMgr())sq=sq.eq('asesor_id',me.id)
-  const{data:segs}=await sq
-  document.getElementById('seg').innerHTML=(segs&&segs.length)?segs.map(s=>`<div class="listrow"><div style="flex:1"><div class="nm">${esc(s.leads?s.leads.nombre:'Lead')}</div><div class="sub2">${esc(s.tipo||'seguimiento')} · ${esc(s.nota||'')}</div></div><div class="sub2">${esc(s.fecha_programada||'')}</div><button class="pg" data-seg="${s.id}">✓ hecho</button>${isMgr()?` <button class="pg" data-segedit="${s.id}">Editar</button> <button class="pg" data-segdel="${s.id}">Borrar</button>`:''}</div>`).join(''):`<div class="empty" style="padding:24px">Sin seguimientos pendientes 🎉</div>`
-  document.querySelectorAll('[data-seg]').forEach(b=>b.onclick=async()=>{await sb.from('seguimientos').update({hecho:true}).eq('id',b.dataset.seg);toast('Marcado ✓');renderPanel()})
-  document.querySelectorAll('[data-segedit]').forEach(b=>b.onclick=()=>{const s=(segs||[]).find(x=>x.id===b.dataset.segedit);if(s)openSeguimientoModal(s,renderPanel)})
-  document.querySelectorAll('[data-segdel]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Borrar este seguimiento?'))return;const r=await delRow('seguimientos',b.dataset.segdel);if(!r.ok){toast(r.msg);return};toast('Borrado ✓');renderPanel()})
-  // cobros resumen (separado por moneda)
-  const c=await cobrosResumen(),cmons=Object.keys(c)
-  document.getElementById('cob').innerHTML=cmons.length?cmons.map(mon=>{const x=c[mon];return `
-    <div class="sechead">${mon}</div>
-    <div class="listrow"><span style="flex:1" class="sub2">Cobrado total</span><span class="nm">${fmtCur(x.cobrado,mon)}</span></div>
-    <div class="listrow"><span style="flex:1" class="sub2">↳ de eso, señas activadas</span><span class="nm">${fmtCur(x.senas,mon)}</span></div>
-    <div class="listrow"><span style="flex:1" class="sub2">Al día (pendiente)</span><span class="nm">${fmtCur(x.aldia,mon)}</span></div>
-    <div class="listrow"><span style="flex:1" class="sub2">Vencidas</span><span class="nm" style="color:var(--danger)">${fmtCur(x.vencidas,mon)}</span></div>
-    <div class="listrow"><span style="flex:1" class="sub2">Total programa activo</span><span class="nm">${fmtCur(x.total,mon)}</span></div>`}).join(''):`<div class="empty" style="padding:16px">Sin cobros todavía.</div>`
-}
-function openSeguimientoModal(s,onSaved){const ov=document.createElement('div');ov.className='overlay'
-  ov.innerHTML=`<div class="modal"><h2>Editar seguimiento</h2>
-    <div class="field"><label>Tipo</label><input class="inp" id="sg_tipo" value="${esc(s.tipo||'')}"/></div>
-    <div class="field"><label>Nota</label><input class="inp" id="sg_nota" value="${esc(s.nota||'')}"/></div>
-    <div class="field"><label>Fecha programada</label><input class="inp" id="sg_fecha" type="date" value="${s.fecha_programada||''}"/></div>
-    <div class="actions"><button class="btn ghost" id="sg_del">Borrar</button><div class="grow"></div><button class="btn ghost" id="sg_cancel">Cancelar</button><button class="btn primary" id="sg_save">Guardar</button></div></div>`
-  document.body.appendChild(ov);ov.onclick=e=>{if(e.target===ov)ov.remove()}
-  ov.querySelector('#sg_cancel').onclick=()=>ov.remove()
-  ov.querySelector('#sg_save').onclick=async()=>{const g=id=>ov.querySelector('#'+id)
-    const r=await updRow('seguimientos',s.id,{tipo:g('sg_tipo').value.trim()||null,nota:g('sg_nota').value.trim()||null,fecha_programada:g('sg_fecha').value||null})
-    if(!r.ok){toast(r.msg);return};toast('Guardado ✓');ov.remove();if(onSaved)onSaved()}
-  ov.querySelector('#sg_del').onclick=async()=>{if(!confirm('¿Borrar este seguimiento?'))return
-    const r=await delRow('seguimientos',s.id);if(!r.ok){toast(r.msg);return}
-    toast('Borrado ✓');ov.remove();if(onSaved)onSaved()}}
-async function loadFunnel(){const el=document.getElementById('funnel');if(!el)return
-  const{count:total}=await sb.from('leads').select('*',{count:'exact',head:true}).eq('lanzamiento_id',state.lanz.id)
-  const ci=async es=>{const{count}=await sb.from('leads').select('*',{count:'exact',head:true}).eq('lanzamiento_id',state.lanz.id).in('estado',es);return count||0}
-  const conf=await ci(['Confirmó clase','Asistió','Agendó','Cerrado']),asis=await ci(['Asistió','Agendó','Cerrado']),agen=await ci(['Agendó','Cerrado']),cerr=await ci(['Cerrado'])
-  const t=total||0,pc=n=>t?((n/t*100).toFixed(1).replace('.',',')+'%'):'0%',w=n=>t?Math.round(n/t*100):0
-  const cells=[['Leads totales',t,'100%',100],['Confirmaron clase',conf,pc(conf),w(conf)],['Asistieron',asis,pc(asis),w(asis)],['Agendaron call',agen,pc(agen),w(agen)],['Cerraron',cerr,pc(cerr),w(cerr)]]
-  el.innerHTML=cells.map(([l,n,p,wd])=>`<div class="fcell"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/></svg><div class="n">${num(n)}</div><div class="l">${l}</div><div class="pct">${p}</div><div class="track"><i style="width:${wd}%"></i></div></div>`).join('')}
+  view().innerHTML=head('DASHBOARD · '+esc((state.lanz&&state.lanz.nombre)||'LANZAMIENTO'),'Panel general',isMgr()?'<button class="btn ghost" id="p_lanz">Lanzamientos</button>':'')
+    +`<div class="card"><h3>Estado del equipo</h3><p class="cdesc">Último KPI que dejó cada asesor — un solo número por persona, siempre el más actualizado.</p><div class="funnel" id="kpiresumen"></div></div>`
+  const b=document.getElementById('p_lanz');if(b)b.onclick=openLanzModal
+  loadKpiResumen()}
 async function loadKpiResumen(){const el=document.getElementById('kpiresumen');if(!el)return
   const{data}=await sb.from('kpis_diarios').select('setter_id,fecha,leves,fluidos,potenciales,leads_sin_responder,agendas_dia').eq('lanzamiento_id',state.lanz.id).limit(10000)
   // Por si todavía no corriste la migración que deja un solo registro por
@@ -265,85 +202,6 @@ async function loadKpiResumen(){const el=document.getElementById('kpiresumen');i
   const cells=[['Sin responder',sum('leads_sin_responder')],['Leves',sum('leves')],['Fluidos',sum('fluidos')],['Potenciales',sum('potenciales')],['Agendas',sum('agendas_dia')]]
   const t=cells.reduce((a,[,n])=>a+n,0),pc=n=>t?Math.round(n/t*100):0
   el.innerHTML=filas.length?cells.map(([l,n])=>`<div class="fcell"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/></svg><div class="n">${num(n)}</div><div class="l">${l}</div><div class="pct">${t?pc(n)+'%':'—'}</div><div class="track"><i style="width:${pc(n)}%"></i></div></div>`).join(''):`<div class="empty" style="padding:16px">Todavía no se cargó ningún KPI.</div>`}
-async function cobrosResumen(){const today=new Date().toISOString().slice(0,10)
-  // Devuelve un objeto por moneda — cada moneda se trackea por separado, sin conversión a USD.
-  const{data}=await sb.from('cuotas').select('monto,moneda,estado,vencimiento,origen,venta_id').eq('lanzamiento_id',state.lanz.id).limit(10000)
-  const M={},slot=m=>M[m]=M[m]||{cobrado:0,aldia:0,vencidas:0,total:0,upsell:0,senas:0}
-  const ventasConCobro=new Set()
-  ;(data||[]).forEach(c=>{const mon=c.moneda||'USD',a=slot(mon),m=Number(c.monto||0);a.total+=m
-    if(c.estado==='cobrado'){a.cobrado+=m;if(c.venta_id)ventasConCobro.add(c.venta_id);if(['upsell','resell'].includes(c.origen))a.upsell+=m}
-    else if(c.estado==='vencido'||(c.vencimiento&&c.vencimiento<today))a.vencidas+=m;else a.aldia+=m})
-  // señas: suman al cash collected sólo si su venta ya cobró al menos una cuota
-  const{data:sn}=await sb.from('senas').select('monto,moneda,venta_id,estado').eq('estado','aplicada').eq('lanzamiento_id',state.lanz.id).limit(10000)
-  ;(sn||[]).forEach(s=>{if(s.venta_id&&ventasConCobro.has(s.venta_id)){const mon=s.moneda||'USD',a=slot(mon),m=Number(s.monto||0);a.senas+=m;a.cobrado+=m}})
-  return M}
-
-/* ================= LEADS ================= */
-async function renderLeads(){const v=view()
-  v.innerHTML=head('SETTER · '+esc((state.lanz&&state.lanz.nombre)||'LANZAMIENTO'),'Leads',
-    `<button class="btn ghost" id="b_imp">📅 Cargar agenda</button>${isMgr()?'<button class="btn ghost" id="b_auto">Auto-repartir</button>':''}<button class="btn primary" id="b_new">+ Nuevo lead</button>`)
-    +`<div class="funnel" id="funnel"></div>
-    <div class="tb"><input class="inp search" id="f_q" placeholder="Buscar nombre, @ o WhatsApp…" value="${esc(state.q)}"/>
-      <span class="pill ${!state.mine?'on':''}" data-mine="0">Todos</span><span class="pill ${state.mine?'on':''}" data-mine="1">Mis leads</span>
-      <select class="pill" id="f_temp"><option value="">Temperatura</option>${TEMPS.map(t=>`<option ${state.temp===t?'selected':''}>${t}</option>`).join('')}</select>
-      <select class="pill" id="f_estado"><option value="">Estado</option>${ESTADOS.map(e=>`<option ${state.estado===e?'selected':''}>${e}</option>`).join('')}</select></div>
-    <div class="tablewrap"><table><thead><tr><th>Nombre</th><th>Contacto</th><th>Temp.</th><th>Estado</th><th>Asesor</th><th>Actualizado</th></tr></thead><tbody id="rows"><tr><td colspan="6" class="empty">Cargando…</td></tr></tbody></table><div class="foot" id="foot"></div></div>`
-  v.querySelector('#b_new').onclick=()=>openLeadModal();v.querySelector('#b_imp').onclick=()=>location.hash='#/importar'
-  const a=v.querySelector('#b_auto');if(a)a.onclick=autoRepartir
-  v.querySelectorAll('[data-mine]').forEach(p=>p.onclick=()=>{state.mine=p.dataset.mine==='1';state.page=0;renderLeads()})
-  let qt;v.querySelector('#f_q').oninput=e=>{clearTimeout(qt);state.q=e.target.value;qt=setTimeout(()=>{state.page=0;loadLeads()},300)}
-  v.querySelector('#f_temp').onchange=e=>{state.temp=e.target.value;state.page=0;loadLeads()}
-  v.querySelector('#f_estado').onchange=e=>{state.estado=e.target.value;state.page=0;loadLeads()}
-  loadFunnel();loadLeads()}
-function baseQuery(count){let q=sb.from('leads').select('*',count?{count:'exact'}:{}).eq('lanzamiento_id',state.lanz.id)
-  if(state.mine)q=q.eq('asesor_id',me.id);if(state.temp)q=q.eq('temperatura',state.temp);if(state.estado)q=q.eq('estado',state.estado)
-  if(state.q)q=q.or(`nombre.ilike.%${state.q}%,contacto.ilike.%${state.q}%`);return q}
-async function loadLeads(){const rows=document.getElementById('rows');if(!rows)return
-  const from=state.page*PAGE
-  const{data,count,error}=await baseQuery(true).order('updated_at',{ascending:false}).range(from,from+PAGE-1)
-  if(error){rows.innerHTML=`<tr><td colspan="6" class="empty">Error: ${esc(error.message)}</td></tr>`;return}
-  state.leads=data||[];state.total=count||0
-  rows.innerHTML=state.leads.length?state.leads.map(l=>`<tr class="clk" data-id="${l.id}"><td><div class="nm">${esc(l.nombre)||'(sin nombre)'}</div><div class="sub2">${esc(l.fuente||'')}</div></td><td>${esc(l.contacto||'—')}</td><td><span class="chip ${l.temperatura||'potencial'}">${esc(l.temperatura||'potencial')}</span></td><td><span class="estado"><span class="dot"></span>${esc(l.estado||'Nuevo')}</span></td><td>${l.asesor_id?`<span class="who"><span class="a">${initials(nameOf(l.asesor_id))}</span>${esc((nameOf(l.asesor_id)||'').split(' ')[0])}</span>`:'<span class="sub2">— sin asignar</span>'}</td><td class="sub2">${fmtDate(l.updated_at)}</td></tr>`).join(''):`<tr><td colspan="6" class="empty">No hay leads con estos filtros.</td></tr>`
-  rows.querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>openLeadModal(state.leads.find(x=>x.id===tr.dataset.id)))
-  const pages=Math.max(1,Math.ceil(state.total/PAGE)),f=document.getElementById('foot')
-  f.innerHTML=`<span>Mostrando ${state.total?from+1:0}–${Math.min(from+PAGE,state.total)} de ${num(state.total)}</span><div class="grow"></div><button class="pg" id="prev" ${state.page<=0?'disabled':''}>‹ Anterior</button><span>${state.page+1}/${pages}</span><button class="pg" id="next" ${state.page>=pages-1?'disabled':''}>Siguiente ›</button>`
-  const pv=document.getElementById('prev'),nx=document.getElementById('next')
-  if(pv)pv.onclick=()=>{if(state.page>0){state.page--;loadLeads()}};if(nx)nx.onclick=()=>{if(state.page<pages-1){state.page++;loadLeads()}}}
-async function openLeadModal(lead){
-  let asist={};if(lead){const{data}=await sb.from('asistencias').select('*').eq('lead_id',lead.id);(data||[]).forEach(a=>asist[a.clase_id]=a.asistio)}
-  const l=lead||{nombre:'',contacto:'',email:'',telefono:'',fuente:'Instagram',temperatura:'potencial',estado:'Nuevo',tema:'',situacion:'',objetivos:'',dolor:'',notas:'',asesor_id:me.id}
-  const ov=document.createElement('div');ov.className='overlay'
-  ov.innerHTML=`<div class="modal"><h2>${lead?'Editar lead':'Nuevo lead'}</h2>
-    <div class="row2"><div class="field"><label>Nombre *</label><input class="inp" id="m_nombre" value="${esc(l.nombre)}"/></div><div class="field"><label>Contacto (@ / WhatsApp)</label><input class="inp" id="m_contacto" value="${esc(l.contacto)}"/></div></div>
-    <div class="row2"><div class="field"><label>Email</label><input class="inp" id="m_email" type="email" value="${esc(l.email||'')}" placeholder="lead@mail.com"/></div><div class="field"><label>Teléfono</label><input class="inp" id="m_telefono" type="tel" value="${esc(l.telefono||'')}" placeholder="+54 9 ..."/></div></div>
-    <div class="row2"><div class="field"><label>Temperatura</label><select id="m_temp">${TEMPS.map(t=>`<option ${l.temperatura===t?'selected':''}>${t}</option>`).join('')}</select></div><div class="field"><label>Estado</label><select id="m_estado">${ESTADOS.map(e=>`<option ${l.estado===e?'selected':''}>${e}</option>`).join('')}</select></div></div>
-    <div class="row2"><div class="field"><label>Fuente</label><input class="inp" id="m_fuente" value="${esc(l.fuente)}"/></div><div class="field"><label>Asesor</label><select id="m_asesor"><option value="">— sin asignar —</option>${state.setters.map(s=>`<option value="${s.id}" ${l.asesor_id===s.id?'selected':''}>${esc(s.nombre)}</option>`).join('')}</select></div></div>
-    <div class="field"><label>Tema que eligió</label><input class="inp" id="m_tema" value="${esc(l.tema)}"/></div>
-    <div class="field"><label>Situación actual <span class="sub2" style="font-weight:400">· contexto para el closer</span></label><textarea class="inp" id="m_situacion" rows="2">${esc(l.situacion||'')}</textarea></div>
-    <div class="field"><label>Objetivos</label><textarea class="inp" id="m_objetivos" rows="2">${esc(l.objetivos||'')}</textarea></div>
-    <div class="field"><label>Dolores</label><textarea class="inp" id="m_dolor" rows="2">${esc(l.dolor||'')}</textarea></div>
-    ${state.clases.length?`<div class="field"><label>Asistencia a clases</label><div class="attend" id="m_asist">${state.clases.map(c=>`<button type="button" class="clbtn ${asist[c.id]?'yes':''}" data-cl="${c.id}">Clase ${c.numero}</button>`).join('')}</div></div>`:''}
-    <div class="row2"><div class="field"><label>Próximo seguimiento</label><input class="inp" id="m_segf" type="date"/></div><div class="field"><label>Nota del seguimiento</label><input class="inp" id="m_segn" placeholder="ej: mandar audio FOMO"/></div></div>
-    <div class="field"><label>Notas</label><textarea id="m_notas" rows="2">${esc(l.notas)}</textarea></div>
-    <div class="actions">${lead?'<button class="btn danger" id="m_del">Eliminar</button>':''}<div class="grow"></div><button class="btn ghost" id="m_cancel">Cancelar</button><button class="btn primary" id="m_save">Guardar</button></div></div>`
-  document.body.appendChild(ov);const g=id=>ov.querySelector('#'+id)
-  ov.onclick=e=>{if(e.target===ov)ov.remove()};g('m_cancel').onclick=()=>ov.remove()
-  ov.querySelectorAll('[data-cl]').forEach(b=>b.onclick=()=>b.classList.toggle('yes'))
-  g('m_save').onclick=async()=>{const p={nombre:g('m_nombre').value.trim(),contacto:g('m_contacto').value.trim(),email:g('m_email').value.trim()||null,telefono:g('m_telefono').value.trim()||null,temperatura:g('m_temp').value,estado:g('m_estado').value,fuente:g('m_fuente').value.trim(),asesor_id:g('m_asesor').value||null,tema:g('m_tema').value.trim(),situacion:g('m_situacion').value.trim()||null,objetivos:g('m_objetivos').value.trim()||null,dolor:g('m_dolor').value.trim()||null,notas:g('m_notas').value.trim(),lanzamiento_id:state.lanz?state.lanz.id:null,updated_at:new Date().toISOString()}
-    if(!p.nombre){toast('Poné un nombre');return};if(p.contacto)p.dedup_key=p.contacto.toLowerCase().replace(/[^a-z0-9]/g,'')
-    let leadId=lead?lead.id:null,res=lead?await sb.from('leads').update(p).eq('id',lead.id):await sb.from('leads').insert(p).select().single()
-    if(res.error){toast('Error: '+res.error.message);return};if(!lead)leadId=res.data.id
-    // asistencias
-    if(state.clases.length&&leadId){for(const b of ov.querySelectorAll('[data-cl]')){await sb.from('asistencias').upsert({lead_id:leadId,clase_id:b.dataset.cl,asistio:b.classList.contains('yes')},{onConflict:'lead_id,clase_id'})}}
-    // seguimiento
-    if(g('m_segf').value&&leadId){await sb.from('seguimientos').insert({lead_id:leadId,asesor_id:p.asesor_id||me.id,fecha_programada:g('m_segf').value,tipo:'seguimiento',nota:g('m_segn').value.trim()})}
-    toast('Guardado ✓');ov.remove()
-    if(location.hash==='#/leads'){loadLeads();loadFunnel()}
-    else if(location.hash==='#/misagendas')renderMisAgendas()
-    else if(location.hash==='#/triage')renderTriage()
-    else location.hash='#/leads'}
-  if(lead)g('m_del').onclick=async()=>{if(confirm('¿Eliminar este lead?')){await sb.from('leads').delete().eq('id',lead.id);toast('Eliminado');ov.remove();if(location.hash==='#/leads'){loadLeads();loadFunnel()}}}}
-
 /* ================= CONTEXTO DE LEADS (setters + closers) ================= */
 // Tabla aparte (`fichas_contexto`), sin agenda ni campos de embudo: el closer
 // carga lo mínimo (nombre + lo que tenga) y cualquier setter/closer suma
@@ -412,181 +270,6 @@ function openContextoModal(f){
     const r=await delRow('fichas_contexto',f.id);if(!r.ok){toast(r.msg);return}
     toast('Eliminado ✓');ov.remove();if(location.hash==='#/contexto')loadContexto()}}
 
-/* ================= IMPORT ================= */
-function renderImport(){const showAsesor=isMgr()||myProfile.rol==='closer'
-  view().innerHTML=head('EQUIPO','Cargar agenda')+`<div class="card"><p class="cdesc">Cargá el lead que agendó llamada, con sus datos completos y cuándo es la agenda.${myProfile.rol==='closer'?' Si se agendó solo (sin que un setter le haya escrito antes), cargala igual — si después alguien tiene contexto de esa persona, lo puede sumar entrando al lead desde Leads.':''}</p>
-    <div class="row2"><div class="field"><label>Nombre *</label><input class="inp" id="ag_nombre"/></div><div class="field"><label>Teléfono</label><input class="inp" id="ag_telefono" type="tel" placeholder="+54 9 ..."/></div></div>
-    <div class="row2"><div class="field"><label>Email</label><input class="inp" id="ag_email" type="email" placeholder="lead@mail.com"/></div><div class="field"><label>Fuente</label><select id="ag_fuente">${CANALES.map(c=>`<option value="${c[0]}">${c[1]}</option>`).join('')}</select></div></div>
-    <div class="row2"><div class="field"><label>Temperatura</label><select id="ag_temp">${TEMPS.map(t=>`<option>${t}</option>`).join('')}</select></div><div class="field"><label>Fecha de la agenda *</label><input class="inp" id="ag_fecha" type="date"/></div></div>
-    ${showAsesor?`<div class="field"><label>Asesor${myProfile.rol==='closer'?' (si sabés qué setter trabajó este lead)':''}</label><select id="ag_asesor"><option value="">— sin asignar —</option>${state.setters.filter(s=>s.rol==='setter').map(s=>`<option value="${s.id}">${esc(s.nombre)}</option>`).join('')}</select></div>`:''}
-    <div class="field"><label>Closer que la toma</label><select id="ag_closer"><option value="">— sin asignar —</option>${state.setters.filter(s=>s.rol==='closer').map(s=>`<option value="${s.id}"${myProfile.rol==='closer'&&s.id===me.id?' selected':''}>${esc(s.nombre)}</option>`).join('')}</select></div>
-    </div>
-    <div class="card"><h3>Contexto para el closer</h3><p class="cdesc">Mini reporte para que el closer llegue a la llamada con el terreno preparado.${myProfile.rol==='closer'?' Si no tenés esta info, dejalo vacío y guardá igual — el setter asignado puede completarlo después desde Leads.':''}</p>
-    <div class="field"><label>Situación actual</label><textarea class="inp" id="ag_situacion" rows="2"></textarea></div>
-    <div class="field"><label>Objetivos</label><textarea class="inp" id="ag_objetivos" rows="2"></textarea></div>
-    <div class="field"><label>Dolores</label><textarea class="inp" id="ag_dolores" rows="2"></textarea></div>
-    <div class="actions"><div class="grow"></div><button class="btn primary" id="ag_save">Guardar agenda</button></div></div>`
-  document.getElementById('ag_save').onclick=saveAgenda}
-async function saveAgenda(){const g=id=>document.getElementById(id),btn=g('ag_save')
-  const nombre=g('ag_nombre').value.trim(),telefono=g('ag_telefono').value.trim(),fecha=g('ag_fecha').value
-  if(!nombre){toast('Poné un nombre');return}
-  if(!fecha){toast('Elegí la fecha de la agenda');return}
-  btn.textContent='Guardando…'
-  const showAsesor=isMgr()||myProfile.rol==='closer'
-  const asesorId=showAsesor?(g('ag_asesor').value||null):me.id
-  const dedup_key=telefono?telefono.toLowerCase().replace(/[^a-z0-9]/g,''):null,lanzamiento_id=state.lanz?state.lanz.id:null
-  const p={nombre,telefono:telefono||null,email:g('ag_email').value.trim()||null,fuente:g('ag_fuente').value,temperatura:g('ag_temp').value,situacion:g('ag_situacion').value.trim()||null,objetivos:g('ag_objetivos').value.trim()||null,dolor:g('ag_dolores').value.trim()||null,estado:'Agendó',asesor_id:asesorId,lanzamiento_id,dedup_key,updated_at:new Date().toISOString()}
-  let lead,error
-  if(dedup_key){
-    const{data:existing}=await sb.from('leads').select('id').eq('lanzamiento_id',lanzamiento_id).eq('dedup_key',dedup_key).limit(1)
-    const r=existing&&existing[0]?await sb.from('leads').update(p).eq('id',existing[0].id).select().single():await sb.from('leads').insert(p).select().single()
-    lead=r.data;error=r.error
-  }else{
-    const r=await sb.from('leads').insert(p).select().single();lead=r.data;error=r.error
-  }
-  if(error){toast('Error: '+error.message);btn.textContent='Guardar agenda';return}
-  const closerId=g('ag_closer').value||(myProfile.rol==='closer'?me.id:null)
-  await sb.from('seguimientos').insert({lead_id:lead.id,asesor_id:asesorId||me.id,closer_id:closerId,fecha_programada:fecha,tipo:'agenda',nota:'Llamada agendada'})
-  toast('Agenda guardada ✓');location.hash='#/calendario'}
-/* ================= MI BASE (CSV + lista privada) ================= */
-function renderImportarBase(){
-  view().innerHTML=head('SETTER · PRIVADO','Mi base')+`
-    <div class="card">
-      <p class="cdesc">Subí un CSV de tu base (necesita una columna de teléfono — el nombre es opcional, si no lo tenés no pasa nada). Todo lo que cargues queda asignado a vos, y solo vos y los managers pueden ver esta lista — al resto del equipo no le aparece. Si un teléfono ya existe como lead en el CRM, esa fila se omite — no se pisa ni se duplica nada.</p>
-      <div class="field"><label>Archivo CSV</label><input class="inp" type="file" id="csv_file" accept=".csv,text/csv"/></div>
-      <label style="display:flex;align-items:center;gap:8px;margin:0 0 12px;font-size:13px;color:var(--muted)"><input type="checkbox" id="csv_overwrite"/> Sobrescribir si el teléfono ya existe <b>en mi base</b> (solo actualiza tus propios contactos que sigan en estado "Nuevo" — nunca toca leads de otro asesor ni que ya avanzaron)</label>
-      <div class="actions"><div class="grow"></div><button class="btn primary" id="csv_go">Importar</button></div>
-      <div id="csv_result" style="margin-top:14px"></div>
-    </div>
-    <div class="card">
-      <h3>Mis contactos cargados</h3>
-      <p class="cdesc">Solo lo que subiste vos. No aparece en la lista general de Leads del resto del equipo.</p>
-      <div class="tb"><input class="inp search" id="mb_q" placeholder="Buscar nombre, @ o teléfono…"/></div>
-      <div class="tablewrap"><table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Temp.</th><th>Estado</th><th>Actualizado</th></tr></thead><tbody id="mb_rows"><tr><td colspan="5" class="empty">Cargando…</td></tr></tbody></table></div>
-    </div>`
-  document.getElementById('csv_go').onclick=importarBaseCSV
-  let mbt;document.getElementById('mb_q').oninput=e=>{clearTimeout(mbt);mbt=setTimeout(()=>loadMiBase(e.target.value.trim()),300)}
-  loadMiBase('')}
-async function loadMiBase(q){
-  const rows=document.getElementById('mb_rows');if(!rows)return
-  let query=sb.from('leads').select('*').eq('lanzamiento_id',state.lanz.id).eq('asesor_id',me.id).eq('fuente','base propia').order('updated_at',{ascending:false}).limit(200)
-  if(q)query=query.or(`nombre.ilike.%${q}%,contacto.ilike.%${q}%,telefono.ilike.%${q}%`)
-  const{data,error}=await query
-  if(error){rows.innerHTML=`<tr><td colspan="5" class="empty">Error: ${esc(error.message)}</td></tr>`;return}
-  rows.innerHTML=(data&&data.length)?data.map(l=>`<tr class="clk" data-id="${l.id}"><td class="nm">${esc(l.nombre)||'(sin nombre)'}</td><td class="sub2">${esc(l.telefono||l.contacto||'—')}</td><td><span class="chip ${l.temperatura||'potencial'}">${esc(l.temperatura||'potencial')}</span></td><td><span class="estado"><span class="dot"></span>${esc(l.estado||'Nuevo')}</span></td><td class="sub2">${fmtDate(l.updated_at)}</td></tr>`).join(''):`<tr><td colspan="5" class="empty">Todavía no subiste tu base.</td></tr>`
-  rows.querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=async()=>{const{data:l}=await sb.from('leads').select('*').eq('id',tr.dataset.id).single();openLeadModal(l)})}
-function parseCSV(text){
-  const rows=[];let row=[],field='',inQuotes=false
-  for(let i=0;i<text.length;i++){const c=text[i]
-    if(inQuotes){if(c==='"'){if(text[i+1]==='"'){field+='"';i++}else inQuotes=false}else field+=c}
-    else{if(c==='"')inQuotes=true
-      else if(c===','){row.push(field);field=''}
-      else if(c==='\r'){}
-      else if(c==='\n'){row.push(field);rows.push(row);row=[];field=''}
-      else field+=c}}
-  if(field!==''||row.length){row.push(field);rows.push(row)}
-  return rows.filter(r=>!(r.length===1&&r[0]===''))}
-function normHeader(s){return (s||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim()}
-async function importarBaseCSV(){
-  const inp=document.getElementById('csv_file'),out=document.getElementById('csv_result'),btn=document.getElementById('csv_go')
-  const file=inp.files&&inp.files[0]
-  if(!file){toast('Elegí un archivo CSV');return}
-  btn.textContent='Procesando…';btn.disabled=true
-  try{
-    const text=await file.text(),rows=parseCSV(text)
-    if(!rows.length){out.innerHTML='<div class="empty">El archivo está vacío.</div>';return}
-    const headers=rows[0].map(normHeader)
-    const findCol=(exact,contains,exclude=[])=>{
-      let i=headers.findIndex(h=>exact.includes(h));if(i>-1)return i
-      return headers.findIndex(h=>contains.some(c=>h.includes(c))&&!exclude.some(e=>h.includes(e)))}
-    const iNombre=findCol(['nombre','name'],['saved name','public name','display name','contact name','nombre completo','nombre','name'],['country'])
-    const iTel=findCol(['telefono','phone','celular','whatsapp','numero','tel'],['telefono','phone','celular','whatsapp','numero','number','tel','movil','mobile'],['code'])
-    const iContacto=findCol(['contacto','usuario','instagram','ig','handle'],['contacto','usuario','instagram','handle'])
-    const iEmail=findCol(['email','mail','correo'],['email','mail','correo'])
-    const iFuente=findCol(['fuente','origen','source'],['fuente','origen','source'])
-    if(iTel===-1){out.innerHTML='<div class="empty">No encontré una columna de "teléfono" en el CSV — sin eso no se puede evitar cargar duplicados.</div>';return}
-    const lanzamiento_id=state.lanz?state.lanz.id:null
-    const candidatos=[];let vacios=0
-    for(let r=1;r<rows.length;r++){const row=rows[r];if(!row||!row.length)continue
-      const telefono=(row[iTel]||'').trim()
-      if(!telefono){vacios++;continue}
-      const nombre=(iNombre>-1?(row[iNombre]||'').trim():'')||`Sin nombre (${telefono})`
-      const contacto=iContacto>-1?(row[iContacto]||'').trim():''
-      const email=iEmail>-1?(row[iEmail]||'').trim():''
-      const fuente=iFuente>-1?(row[iFuente]||'').trim():'base propia'
-      const dedup_key=telefono?telefono.toLowerCase().replace(/[^a-z0-9]/g,''):null
-      candidatos.push({nombre,telefono:telefono||null,contacto:contacto||null,email:email||null,fuente:fuente||'base propia',dedup_key,estado:'Nuevo',temperatura:'potencial',asesor_id:me.id,lanzamiento_id,updated_at:new Date().toISOString()})}
-    if(!candidatos.length){out.innerHTML='<div class="empty">No hay filas válidas para cargar.</div>';return}
-    const sobrescribir=document.getElementById('csv_overwrite').checked
-    const{data:todos}=await sb.from('leads').select('id,telefono,dedup_key,asesor_id,fuente,estado').eq('lanzamiento_id',lanzamiento_id).limit(20000)
-    const propiosNuevos=new Map(),otrosExistentes=new Set()
-    ;(todos||[]).forEach(l=>{
-      const keys=[l.dedup_key,l.telefono?l.telefono.toLowerCase().replace(/[^a-z0-9]/g,''):null].filter(Boolean)
-      const esPropioNuevo=l.asesor_id===me.id&&l.fuente==='base propia'&&l.estado==='Nuevo'
-      keys.forEach(k=>{if(esPropioNuevo)propiosNuevos.set(k,l.id);else otrosExistentes.add(k)})})
-    const nuevos=[],actualizar=[]
-    let omitidos=0,repetidosArchivo=0
-    const vistosEnArchivo=new Set()
-    candidatos.forEach(c=>{
-      if(c.dedup_key&&otrosExistentes.has(c.dedup_key)){omitidos++;return}
-      if(c.dedup_key&&propiosNuevos.has(c.dedup_key)){
-        if(sobrescribir)actualizar.push({id:propiosNuevos.get(c.dedup_key),patch:{nombre:c.nombre,contacto:c.contacto,email:c.email,fuente:c.fuente,updated_at:c.updated_at}})
-        else omitidos++
-        return}
-      if(c.dedup_key){
-        if(vistosEnArchivo.has(c.dedup_key)){repetidosArchivo++;return}
-        vistosEnArchivo.add(c.dedup_key)}
-      nuevos.push(c)})
-    let cargados=0,saltadosPorConflicto=0
-    for(let i=0;i<nuevos.length;i+=300){const lote=nuevos.slice(i,i+300)
-      const{error}=await sb.from('leads').insert(lote)
-      if(!error){cargados+=lote.length;continue}
-      // Si el lote entero falló (típicamente porque otro asesor cargó justo
-      // en el medio el mismo teléfono), reintentamos fila por fila para no
-      // perder el resto del lote por una sola que choca con algo ya cargado.
-      for(const fila of lote){
-        const{error:e2}=await sb.from('leads').insert([fila])
-        if(e2)saltadosPorConflicto++;else cargados++}}
-    let actualizados=0
-    for(const a of actualizar){
-      const{error}=await sb.from('leads').update(a.patch).eq('id',a.id)
-      if(error){out.innerHTML=`<div class="empty">Error actualizando: ${esc(error.message)}</div>`;return}
-      actualizados++}
-    out.innerHTML=`<div class="empty" style="color:var(--ink)">✓ ${cargados} leads cargados a tu base${actualizados?`, ${actualizados} actualizados`:''}${omitidos?`, ${omitidos} omitidos (teléfono ya existía)`:''}${repetidosArchivo?`, ${repetidosArchivo} repetidos dentro del mismo archivo (se cargó solo el primero)`:''}${saltadosPorConflicto?`, ${saltadosPorConflicto} salteados (alguien más cargó ese teléfono justo antes)`:''}${vacios?`, ${vacios} filas sin teléfono ignoradas`:''}.</div>`
-    inp.value=''
-  }catch(e){out.innerHTML=`<div class="empty">Error: ${esc(e.message||String(e))}</div>`}
-  finally{btn.textContent='Importar';btn.disabled=false}}
-async function autoRepartir(){if(!confirm('¿Repartir los leads SIN asignar entre los asesores activos?'))return
-  const{data:un}=await sb.from('leads').select('id').eq('lanzamiento_id',state.lanz.id).is('asesor_id',null).limit(5000);if(!un||!un.length){toast('No hay leads sin asignar');return}
-  const st=state.setters;if(!st.length){toast('No hay asesores activos');return}
-  for(let i=0;i<un.length;i++){const nuevoAsesor=st[i%st.length].id
-    await sb.from('leads').update({asesor_id:nuevoAsesor}).eq('id',un[i].id)
-    // Sincronizar también el seguimiento de agenda si ya existía uno — si no,
-    // queda desalineado (leads dice un asesor, seguimientos dice otro/ninguno)
-    // y ese lead se vuelve invisible para el asesor correcto en Triage/Reporte.
-    await sb.from('seguimientos').update({asesor_id:nuevoAsesor}).eq('lead_id',un[i].id).eq('tipo','agenda')}
-  toast(`Repartidos ${un.length} leads ✓`);loadLeads();loadFunnel()}
-
-/* ================= LEADS SIN ASESOR ================= */
-// Cuando llegan muchas agendas de golpe (ráfaga manual o vía Calendly sin
-// UTM de un setter), el asesor_id puede quedar en null — esta pantalla los
-// junta a todos para asignarlos uno por uno, a diferencia de Auto-repartir
-// que los reparte al azar sin que el manager elija quién se queda con cada uno.
-async function renderSinAsesor(){
-  view().innerHTML=head('MANAGER','Leads sin asesor')+`<div class="card"><p class="cdesc">Leads sin ningún setter asignado — por lo general de ráfagas de agendas que llegaron juntas (manual o Calendly) sin quedar trazadas a un setter. Asignalos uno por uno acá.</p><div id="sa_rows"></div></div>`
-  const{data:leads}=await sb.from('leads').select('id,nombre,telefono,fuente,estado,created_at').eq('lanzamiento_id',state.lanz.id).is('asesor_id',null).order('created_at',{ascending:false}).limit(500)
-  const setters=state.setters.filter(s=>s.rol==='setter')
-  const el=document.getElementById('sa_rows')
-  el.innerHTML=(leads&&leads.length)?leads.map(l=>`<div class="listrow"><div style="flex:1"><div class="nm">${esc(l.nombre)}</div><div class="sub2">${esc(l.telefono||'sin teléfono')} · ${esc(l.fuente||'—')} · ${esc(l.estado)} · ${fmtDateTime(l.created_at)}</div></div><select id="sa_sel_${l.id}"><option value="">— elegir setter —</option>${setters.map(s=>`<option value="${s.id}">${esc(s.nombre)}</option>`).join('')}</select><button class="pg" data-asignar-set="${l.id}">Asignar</button></div>`).join(''):`<div class="empty" style="padding:24px">No hay leads sin asesor por ahora 🎉</div>`
-  document.querySelectorAll('[data-asignar-set]').forEach(b=>b.onclick=async()=>{
-    const leadId=b.dataset.asignarSet,sel=document.getElementById('sa_sel_'+leadId),setterId=sel.value
-    if(!setterId){toast('Elegí un setter primero');return}
-    await sb.from('leads').update({asesor_id:setterId,updated_at:new Date().toISOString()}).eq('id',leadId)
-    // Mismo motivo que en autoRepartir: si ya había un seguimiento de agenda
-    // para este lead, sincronizarlo — si no, queda desalineado para siempre.
-    await sb.from('seguimientos').update({asesor_id:setterId}).eq('lead_id',leadId).eq('tipo','agenda')
-    toast('Setter asignado ✓');renderSinAsesor()})}
-
 /* ================= KPIS ================= */
 async function renderKpis(){
   view().innerHTML=head('SETTER','KPIs')+`<div class="card"><h3>Tus números</h3><p class="cdesc">Un solo registro por vos — cada vez que guardás, pisa tu último número (no se suma a lo anterior). No se acumula historial día a día.</p>
@@ -615,592 +298,7 @@ async function loadKhist(){const el=document.getElementById('khist');if(!el)retu
     return `<tr${sospechoso?' style="background:rgba(240,101,79,.1)"':''}><td class="nm">${esc(nameOf(k.setter_id)||'—')}</td><td>${k.leads_sin_responder||0}</td><td>${k.leves||0}</td><td>${k.fluidos||0}</td><td>${k.potenciales||0}</td><td>${k.agendas_dia||0}</td><td class="sub2"${sospechoso?' style="color:var(--danger)"':''}>${real}${sospechoso?' ⚠':''}</td><td class="sub2">${fmtDateTime(k.updated_at||k.created_at)}</td><td><button class="pg" data-kdel="${k.id}">Borrar</button></td></tr>`}).join(''):`<tr><td colspan="9" class="empty">Sin registros todavía.</td></tr>`
   document.querySelectorAll('[data-kdel]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Borrar el registro de KPIs de este asesor?'))return;const r=await delRow('kpis_diarios',b.dataset.kdel);if(!r.ok){toast(r.msg);return};toast('Borrado ✓');loadKhist()})}
 
-/* ================= MIS AGENDAS (setter) ================= */
-async function renderMisAgendas(){view().innerHTML=head('SETTER','Mis agendas')+`<div class="card"><h3>Agendas asignadas a vos</h3><p class="cdesc">Incluye las que vos cargaste y las que un closer cargó y te asignó porque el lead se agendó solo. Entrá y completá "Contexto para el closer" en las que todavía no lo tengan.</p><div id="ma"></div></div>`
-  const{data}=await sb.from('leads').select('*').eq('lanzamiento_id',state.lanz.id).eq('asesor_id',me.id).in('estado',['Agendó','Confirmó clase']).order('updated_at',{ascending:false}).limit(200)
-  const rows=data||[]
-  const ids=rows.map(l=>l.id)
-  let fechaByLead={}
-  if(ids.length){const{data:segs}=await sb.from('seguimientos').select('lead_id,fecha_programada').eq('tipo','agenda').in('lead_id',ids)
-    ;(segs||[]).forEach(s=>{if(!fechaByLead[s.lead_id]||s.fecha_programada>fechaByLead[s.lead_id])fechaByLead[s.lead_id]=s.fecha_programada})}
-  document.getElementById('ma').innerHTML=rows.length?rows.map(l=>{const tieneContexto=!!(l.situacion||l.objetivos||l.dolor)
-    return `<div class="listrow"><div style="flex:1"><div class="nm">${esc(l.nombre)}</div><div class="sub2">${esc(l.telefono||l.contacto||'sin teléfono')} · agenda: ${esc(fechaByLead[l.id]||'—')}</div></div><span class="chip ${tieneContexto?'cobrado':'pendiente'}">${tieneContexto?'con contexto':'sin contexto'}</span><span class="chip ${l.temperatura}">${esc(l.temperatura)}</span><button class="pg" data-ma="${l.id}">Abrir</button></div>`}).join(''):`<div class="empty" style="padding:24px">No tenés agendas asignadas por ahora 🎉</div>`
-  document.querySelectorAll('[data-ma]').forEach(b=>b.onclick=async()=>{const{data:l}=await sb.from('leads').select('*').eq('id',b.dataset.ma).single();openLeadModal(l)})}
-
-/* ================= TRIAGE ================= */
-function triageRowHTML(l){return `<div class="listrow"><div style="flex:1"><div class="nm">${esc(l.nombre)}</div><div class="sub2">${esc(l.contacto||'')} · ${esc(l.tema||'sin tema')}</div></div><span class="chip ${l.temperatura}">${esc(l.temperatura)}</span><button class="pg" data-l="${l.id}">Abrir</button></div>`}
-async function renderTriage(){view().innerHTML=head('CLOSER','Triage')+`<div class="card"><h3>Agendas para triage</h3><p class="cdesc">Leads que agendaron y hay que calificar/preparar antes de la call.</p><div id="tr"></div><div id="tr_otros" style="margin-top:20px"></div></div>`
-  let misIds=null
-  if(!isMgr()&&myProfile.rol==='closer'){
-    const{data:segs}=await sb.from('seguimientos').select('lead_id').eq('closer_id',me.id).eq('hecho',false)
-    misIds=new Set((segs||[]).map(s=>s.lead_id).filter(Boolean))
-  }
-  const{data:todos}=await sb.from('leads').select('*').eq('lanzamiento_id',state.lanz.id).in('estado',['Agendó','Confirmó clase']).order('updated_at',{ascending:false}).limit(200)
-  if(misIds){
-    const mias=(todos||[]).filter(l=>misIds.has(l.id)),otras=(todos||[]).filter(l=>!misIds.has(l.id))
-    document.getElementById('tr').innerHTML=mias.length?mias.map(triageRowHTML).join(''):`<div class="empty" style="padding:24px">Nada en triage para vos.</div>`
-    document.getElementById('tr_otros').innerHTML=otras.length?`<h3 style="margin-bottom:8px">Agendas de otros closers <span class="sub2" style="font-weight:400">· por si cubriste una call</span></h3>${otras.map(triageRowHTML).join('')}`:''
-  }else{
-    document.getElementById('tr').innerHTML=(todos&&todos.length)?todos.map(triageRowHTML).join(''):`<div class="empty" style="padding:24px">Nada en triage.</div>`
-  }
-  document.querySelectorAll('[data-l]').forEach(b=>b.onclick=async()=>{const{data:l}=await sb.from('leads').select('*').eq('id',b.dataset.l).single();openLeadModal(l)})}
-
-/* ================= REPORTE DE LLAMADAS ================= */
-async function renderReporte(){
-  let misIds=null
-  if(!isMgr()&&myProfile.rol==='closer'){
-    const{data:segs}=await sb.from('seguimientos').select('lead_id').eq('closer_id',me.id)
-    misIds=new Set((segs||[]).map(s=>s.lead_id).filter(Boolean))
-  }
-  const{data:leads}=await sb.from('leads').select('id,nombre,asesor_id').eq('lanzamiento_id',state.lanz.id).in('estado',['Agendó','Confirmó clase','Asistió']).order('updated_at',{ascending:false}).limit(300)
-  const optHTML=l=>`<option value="${l.id}">${esc(l.nombre)}</option>`
-  let leadOptionsHTML
-  if(misIds){
-    const mias=(leads||[]).filter(l=>misIds.has(l.id)),otras=(leads||[]).filter(l=>!misIds.has(l.id))
-    leadOptionsHTML=(mias.length?`<optgroup label="Tus agendas">${mias.map(optHTML).join('')}</optgroup>`:'')+(otras.length?`<optgroup label="Resto del equipo">${otras.map(optHTML).join('')}</optgroup>`:'')
-  }else{
-    leadOptionsHTML=(leads||[]).map(optHTML).join('')
-  }
-  view().innerHTML=head('CLOSER','Reporte de llamadas')+`<div class="card"><h3>Datos de la llamada</h3>
-    <div class="row2"><div class="field"><label>Lead (agenda)</label><select id="r_lead"><option value="">— elegir —</option>${leadOptionsHTML}</select></div><div class="field"><label>¿No está? Nombre nuevo</label><input class="inp" id="r_nuevo" placeholder="Se crea el lead solo"/></div></div>
-    <div class="row2"><div class="field"><label>¿Se presentó?</label><select id="r_asis"><option>Asistió</option><option>No-show</option><option>Reprogramó</option></select></div><div class="field"><label>Resultado</label><select id="r_res"><option value="">— sin resultado —</option><option>Cerró</option><option>Seguimiento</option><option>No cierre</option></select></div></div>
-    <div class="field"><label>Link de Fathom</label><input class="inp" id="r_fathom" placeholder="https://fathom.video/..."/></div></div>
-    <div class="card"><h3>Venta <span class="sub2" style="font-weight:400">· completá solo si cerró</span></h3>${ventaFormHTML('r_')}<p class="cdesc" style="margin-top:12px">Cada moneda se trackea por separado (sin conversión). El comprobante queda adjunto a la cuota pagada.</p></div>
-    <div class="card"><h3>Reporte de la llamada</h3><div class="field"><label>Situación actual</label><textarea id="r_sit" rows="2"></textarea></div><div class="field"><label>Dolores</label><textarea id="r_dol" rows="2"></textarea></div><div class="field"><label>Razones de compra</label><textarea id="r_raz" rows="2"></textarea></div>
-    <div class="row2"><div class="field"><label>Objeción principal</label><input class="inp" id="r_o1"/></div><div class="field"><label>Objeción secundaria</label><input class="inp" id="r_o2"/></div></div>
-    <div class="field"><label>Frases clave del lead</label><textarea id="r_fr" rows="2"></textarea></div>
-    <div class="row2"><div class="field"><label>Motivo de no cierre</label><input class="inp" id="r_mnc"/></div><div class="field"><label>Próximo seguimiento</label><input class="inp" id="r_ps" type="date"/></div></div>
-    <div class="field"><label>Próxima acción</label><input class="inp" id="r_pa"/></div>
-    <div class="field"><label>Feedback / notas</label><textarea id="r_fb" rows="2"></textarea></div>
-    <div class="actions"><div class="grow"></div><button class="btn primary" id="r_save">Guardar reporte</button></div></div>`
-  wireVentaForm('r_')
-  let rSenas=[]
-  const rLead=document.getElementById('r_lead');rLead.onchange=()=>{const l=(leads||[]).find(x=>x.id===rLead.value),ss=document.getElementById('r_setter');if(ss)ss.value=(l&&l.asesor_id)||'';const sm=rSenas.find(s=>s.lead_id===rLead.value),sn=document.getElementById('r_sena');if(sn)sn.value=sm?sm.id:''}
-  rSenas=await loadSenaOptions('r_')
-  document.getElementById('r_save').onclick=saveReporte}
-async function saveReporte(){const g=id=>document.getElementById(id)
-  let leadId=g('r_lead').value||null
-  if(!leadId&&g('r_nuevo').value.trim()){const{data}=await sb.from('leads').insert({nombre:g('r_nuevo').value.trim(),estado:'Agendó',lanzamiento_id:state.lanz?state.lanz.id:null}).select().single();leadId=data.id}
-  const resultado=g('r_res').value||null
-  const vf=readVentaForm('r_'),rate=1 // cada moneda se trackea por separado, sin conversión
-  const rep={lead_id:leadId,closer_id:me.id,asistio:g('r_asis').value,resultado,fathom_link:g('r_fathom').value.trim(),programa:vf.programa,forma_cierre:vf.forma,moneda:vf.moneda,monto_facturado:vf.ticket,monto_upfront:vf.pago,cotizacion:rate,billetera:vf.billetera,situacion:g('r_sit').value.trim(),dolores:g('r_dol').value.trim(),razones_compra:g('r_raz').value.trim(),objecion_principal:g('r_o1').value.trim(),objecion_secundaria:g('r_o2').value.trim(),frases_clave:g('r_fr').value.trim(),motivo_no_cierre:g('r_mnc').value.trim(),proximo_seguimiento:g('r_ps').value||null,proxima_accion:g('r_pa').value.trim(),feedback:g('r_fb').value.trim()}
-  if(resultado==='Cerró'&&!vf.ticket){toast('Cerró: cargá el ticket de la venta');return}
-  const{data:repRow,error}=await sb.from('reportes_llamada').insert(rep).select().single();if(error){toast('Error: '+error.message);return}
-  if(leadId&&resultado==='Cerró'){
-    try{await saveVenta({...vf,leadId,closerId:me.id,reporteId:repRow.id})}catch(e){toast('Reporte ok, error en venta: '+(e.message||e));return}
-  }else if(leadId&&rep.asistio==='Asistió'){await sb.from('leads').update({estado:'Asistió'}).eq('id',leadId)}
-  if(leadId&&rep.proximo_seguimiento)await sb.from('seguimientos').insert({lead_id:leadId,asesor_id:me.id,fecha_programada:rep.proximo_seguimiento,tipo:'post-call',nota:rep.proxima_accion})
-  toast('Reporte guardado ✓');location.hash='#/grilla'}
-
-/* ================= AGENDAS SIN CLOSER (huérfanas) ================= */
-// Detecta leads agendados que no tienen ningún seguimiento tipo "agenda" con
-// closer_id asignado — por eso quedan invisibles en Triage/Reporte para
-// cualquier closer, aunque sigan apareciendo en Ventas (que no filtra por
-// closer). Bug de origen: "Cargar agenda" y el webhook de Calendly pueden
-// crear ese seguimiento sin closer_id si nadie lo eligió a tiempo.
-async function renderNoAsignados(){
-  view().innerHTML=head('MANAGER','Agendas sin closer')+`<div class="card"><p class="cdesc">Leads agendados que no tienen ningún closer asignado en sus seguimientos — por eso no le aparecen a nadie en Triage ni en Reporte de llamadas, aunque sigan visibles en Ventas. Asignales un closer acá para destrabarlos.</p><div id="na_rows"></div></div>`
-  const{data:leads}=await sb.from('leads').select('id,nombre,telefono,estado,updated_at').eq('lanzamiento_id',state.lanz.id).in('estado',['Agendó','Confirmó clase','Asistió']).order('updated_at',{ascending:false}).limit(500)
-  const ids=(leads||[]).map(l=>l.id)
-  let segsByLead={}
-  if(ids.length){
-    const{data:segs}=await sb.from('seguimientos').select('id,lead_id,closer_id').eq('tipo','agenda').in('lead_id',ids)
-    ;(segs||[]).forEach(s=>{if(!segsByLead[s.lead_id])segsByLead[s.lead_id]=[];segsByLead[s.lead_id].push(s)})}
-  const huerfanos=(leads||[]).filter(l=>{const segs=segsByLead[l.id]||[];return!segs.some(s=>s.closer_id)})
-  const closers=state.setters.filter(s=>s.rol==='closer')
-  const el=document.getElementById('na_rows')
-  el.innerHTML=huerfanos.length?huerfanos.map(l=>`<div class="listrow" data-row="${l.id}"><div style="flex:1"><div class="nm">${esc(l.nombre)}</div><div class="sub2">${esc(l.telefono||'sin teléfono')} · ${esc(l.estado)} · actualizado ${fmtDate(l.updated_at)}</div></div><select id="na_sel_${l.id}"><option value="">— elegir closer —</option>${closers.map(c=>`<option value="${c.id}">${esc(c.nombre)}</option>`).join('')}</select><button class="pg" data-asignar="${l.id}">Asignar</button></div>`).join(''):`<div class="empty" style="padding:24px">No hay agendas huérfanas por ahora 🎉</div>`
-  document.querySelectorAll('[data-asignar]').forEach(b=>b.onclick=async()=>{
-    const leadId=b.dataset.asignar,sel=document.getElementById('na_sel_'+leadId),closerId=sel.value
-    if(!closerId){toast('Elegí un closer primero');return}
-    const existentes=segsByLead[leadId]||[]
-    if(existentes.length){
-      await sb.from('seguimientos').update({closer_id:closerId}).eq('id',existentes[0].id)
-    }else{
-      await sb.from('seguimientos').insert({lead_id:leadId,closer_id:closerId,tipo:'agenda',fecha_programada:new Date().toISOString().slice(0,10),nota:'Asignación manual — huérfano detectado'})
-    }
-    toast('Closer asignado ✓');renderNoAsignados()})}
-
-/* ================= GRILLA DE REPORTES ================= */
-async function renderGrilla(){view().innerHTML=head('CLOSER','Grilla de reportes')+`<div class="tablewrap"><table><thead><tr><th>Lead</th><th>Fecha</th><th>Closer</th><th>Asistencia</th><th>Resultado</th><th>Programa</th><th>Facturado</th><th>Cargado</th></tr></thead><tbody id="grows"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table></div>`
-  let q=sb.from('reportes_llamada').select('*,leads(nombre)').order('fecha',{ascending:false}).limit(200);if(myProfile.rol==='closer')q=q.eq('closer_id',me.id)
-  const{data}=await q;document.getElementById('grows').innerHTML=(data&&data.length)?data.map(r=>`<tr class="clk" data-id="${r.id}"><td class="nm">${esc(r.leads?r.leads.nombre:'—')}</td><td class="sub2">${fmtDate(r.fecha)}</td><td>${esc((nameOf(r.closer_id)||'').split(' ')[0]||'—')}</td><td>${esc(r.asistio||'—')}</td><td>${esc(r.resultado||'—')}</td><td>${esc(r.programa||'—')}</td><td class="nm">${r.monto_facturado?fmtCur(r.monto_facturado,r.moneda):'—'}</td><td class="sub2">${fmtDateTime(r.created_at)}</td></tr>`).join(''):`<tr><td colspan="8" class="empty">Sin reportes todavía.</td></tr>`
-  document.querySelectorAll('#grows tr[data-id]').forEach(tr=>tr.onclick=()=>{const r=data.find(x=>x.id===tr.dataset.id);openReporteDetail(r)})}
-function openReporteDetail(r){const ov=document.createElement('div');ov.className='overlay';const mgr=isMgr()
-  const f=(l,v)=>v?`<div class="field"><label>${l}</label><div>${esc(v)}</div></div>`:''
-  const fe=(l,id,v)=>`<div class="field"><label>${l}</label><input class="inp" id="${id}" value="${esc(v||'')}"/></div>`
-  const body=mgr?`${fe('Asistencia','rd_asistio',r.asistio)}${fe('Resultado','rd_resultado',r.resultado)}${fe('Programa','rd_programa',r.programa)}${fe('Forma de cierre','rd_forma',r.forma_cierre)}${fe('Facturado','rd_monto',r.monto_facturado)}${fe('Situación','rd_situacion',r.situacion)}${fe('Dolores','rd_dolores',r.dolores)}${fe('Razones de compra','rd_razones',r.razones_compra)}${fe('Objeción principal','rd_objecion',r.objecion_principal)}${fe('Frases clave','rd_frases',r.frases_clave)}${fe('Próxima acción','rd_proxima',r.proxima_accion)}${fe('Feedback','rd_feedback',r.feedback)}`
-    :`${f('Asistencia',r.asistio)}${f('Resultado',r.resultado)}${f('Programa',r.programa)}${f('Forma de cierre',r.forma_cierre)}${f('Facturado',r.monto_facturado?fmtCur(r.monto_facturado,r.moneda):'')}${f('Situación',r.situacion)}${f('Dolores',r.dolores)}${f('Razones de compra',r.razones_compra)}${f('Objeción principal',r.objecion_principal)}${f('Frases clave',r.frases_clave)}${f('Próxima acción',r.proxima_accion)}${f('Feedback',r.feedback)}`
-  ov.innerHTML=`<div class="modal"><h2>${esc(r.leads?r.leads.nombre:'Reporte')}</h2>${body}<div class="actions">${mgr?'<button class="btn ghost" id="rd_del">Borrar</button>':''}<div class="grow"></div><button class="btn ghost" id="c">Cerrar</button>${mgr?'<button class="btn primary" id="rd_save">Guardar</button>':''}</div></div>`
-  document.body.appendChild(ov);ov.onclick=e=>{if(e.target===ov)ov.remove()};ov.querySelector('#c').onclick=()=>ov.remove()
-  if(mgr){
-    ov.querySelector('#rd_save').onclick=async()=>{const g=id=>ov.querySelector('#'+id)
-      const p={asistio:g('rd_asistio').value.trim()||null,resultado:g('rd_resultado').value.trim()||null,programa:g('rd_programa').value.trim()||null,forma_cierre:g('rd_forma').value.trim()||null,monto_facturado:Number(g('rd_monto').value||0)||null,situacion:g('rd_situacion').value.trim()||null,dolores:g('rd_dolores').value.trim()||null,razones_compra:g('rd_razones').value.trim()||null,objecion_principal:g('rd_objecion').value.trim()||null,frases_clave:g('rd_frases').value.trim()||null,proxima_accion:g('rd_proxima').value.trim()||null,feedback:g('rd_feedback').value.trim()||null}
-      const rr=await updRow('reportes_llamada',r.id,p);if(!rr.ok){toast(rr.msg);return}
-      toast('Guardado ✓');ov.remove();renderGrilla()}
-    ov.querySelector('#rd_del').onclick=async()=>{if(!confirm('¿Borrar este reporte? No borra la venta si ya se cerró.'))return
-      const rr=await delRow('reportes_llamada',r.id);if(!rr.ok){toast(rr.msg);return}
-      toast('Borrado ✓');ov.remove();renderGrilla()}
-  }}
-
-/* ================= MARKETING ================= */
-async function renderMarketing(){view().innerHTML=head('MARKETING','Rendimiento de contenido','<button class="btn primary" id="m_new">+ Nuevo punto de contacto</button>')+`<div class="funnel" id="mk"></div>
-  <div class="card"><h3>Leads por plataforma</h3><div class="bars" id="bars"></div></div>
-  <div class="tablewrap"><table><thead><tr><th>Tag</th><th>Pieza</th><th>Plataforma</th><th>Fecha</th><th>Chats</th><th>Leads</th><th>Calif.</th><th>Ventas</th><th>Generado</th></tr></thead><tbody id="pcrows"><tr><td colspan="9" class="empty">Cargando…</td></tr></tbody></table></div>`
-  document.getElementById('m_new').onclick=openPunto
-  const{data:pc}=await sb.from('puntos_contacto').select('*').order('fecha',{ascending:false}).limit(200)
-  const sum=(k)=>(pc||[]).reduce((a,x)=>a+Number(x[k]||0),0)
-  const cells=[['Chats únicos',sum('chats_unicos')],['Leads',sum('leads')],['Calificados',sum('calificados')],['Ventas',sum('ventas')],['Generado',money(sum('generado'))]]
-  document.getElementById('mk').innerHTML=cells.map(([l,n])=>`<div class="fcell"><div class="n" style="font-size:26px">${typeof n==='number'?num(n):n}</div><div class="l">${l}</div></div>`).join('')
-  document.getElementById('pcrows').innerHTML=(pc&&pc.length)?pc.map(p=>`<tr><td class="nm">${esc(p.tag||'')}</td><td>${esc(p.pieza||'')}</td><td>${esc(p.plataforma||'')}</td><td class="sub2">${esc(p.fecha||'')}</td><td>${p.chats_unicos}</td><td>${p.leads}</td><td>${p.calificados}</td><td>${p.ventas}</td><td class="nm">${money(p.generado)}</td></tr>`).join(''):`<tr><td colspan="9" class="empty">Sin puntos de contacto.</td></tr>`
-  // bars: leads por fuente
-  const{data:allLeads}=await sb.from('leads').select('fuente').eq('lanzamiento_id',state.lanz.id).limit(10000);const by={}
-  ;(allLeads||[]).forEach(l=>{const f=(l.fuente||'otros').toLowerCase();by[f]=(by[f]||0)+1})
-  const plats=['instagram','youtube','ads','otros'],mx=Math.max(1,...plats.map(p=>by[p]||0))
-  document.getElementById('bars').innerHTML=plats.map(p=>`<div class="bar"><div class="bn">${by[p]||0}</div><div class="col" style="height:${Math.round((by[p]||0)/mx*100)}%"></div><div class="bl">${p}</div></div>`).join('')}
-function openPunto(){const ov=document.createElement('div');ov.className='overlay'
-  ov.innerHTML=`<div class="modal"><h2>Nuevo punto de contacto</h2><div class="row2"><div class="field"><label>Tag</label><input class="inp" id="p_tag"/></div><div class="field"><label>Pieza</label><input class="inp" id="p_pieza"/></div></div>
-    <div class="row2"><div class="field"><label>Plataforma</label><select id="p_plat"><option>instagram</option><option>youtube</option><option>ads</option><option>otros</option></select></div><div class="field"><label>Fecha</label><input class="inp" id="p_fecha" type="date" value="${new Date().toISOString().slice(0,10)}"/></div></div>
-    <div class="row3"><div class="field"><label>Chats únicos</label><input class="inp" id="p_chats" type="number" value="0"/></div><div class="field"><label>Leads</label><input class="inp" id="p_leads" type="number" value="0"/></div><div class="field"><label>Calificados</label><input class="inp" id="p_cali" type="number" value="0"/></div></div>
-    <div class="row2"><div class="field"><label>Ventas</label><input class="inp" id="p_ventas" type="number" value="0"/></div><div class="field"><label>Generado (USD)</label><input class="inp" id="p_gen" type="number" value="0"/></div></div>
-    <div class="actions"><div class="grow"></div><button class="btn ghost" id="p_c">Cancelar</button><button class="btn primary" id="p_s">Guardar</button></div></div>`
-  document.body.appendChild(ov);const g=id=>ov.querySelector('#'+id);ov.onclick=e=>{if(e.target===ov)ov.remove()};g('p_c').onclick=()=>ov.remove()
-  g('p_s').onclick=async()=>{const{error}=await sb.from('puntos_contacto').insert({tag:g('p_tag').value.trim(),pieza:g('p_pieza').value.trim(),plataforma:g('p_plat').value,fecha:g('p_fecha').value,chats_unicos:+g('p_chats').value,leads:+g('p_leads').value,calificados:+g('p_cali').value,ventas:+g('p_ventas').value,generado:+g('p_gen').value});if(error){toast('Error: '+error.message);return};toast('Guardado ✓');ov.remove();renderMarketing()}}
-
-/* ================= COBROS ================= */
-let cobTab='cuotas'
-async function renderCobros(){view().innerHTML=head('COBROS','Cuotas y seguimientos')+`<div class="tabs"><span class="tab ${cobTab==='cuotas'?'on':''}" data-t="cuotas">Cuotas del programa</span><span class="tab ${cobTab==='pend'?'on':''}" data-t="pend">Seguimientos pendientes</span></div>
-  <div class="funnel" id="cbk"></div>
-  <div class="card"><h3>Cargar cuota manual</h3><p class="cdesc">Para upsells, resells o cobros puntuales.</p>
-    <div class="row3"><div class="field"><label>Lead / cliente</label><input class="inp" id="c_lead" placeholder="Nombre"/></div><div class="field"><label>Programa</label><input class="inp" id="c_prog"/></div><div class="field"><label>Origen</label><select id="c_org"><option>manual</option><option>upsell</option><option>resell</option></select></div></div>
-    <div class="row3"><div class="field"><label>Moneda</label><select id="c_mon">${MONEDAS.map(m=>`<option>${m}</option>`).join('')}</select></div><div class="field"><label>Monto</label><input class="inp" id="c_monto" type="number"/></div><div class="field"><label>Vencimiento</label><input class="inp" id="c_venc" type="date"/></div></div>
-    <div class="field"><label>Billetera</label><input class="inp" id="c_bill"/></div>
-    <div class="actions"><div class="grow"></div><button class="btn primary" id="c_add">Agregar cuota</button></div></div>
-  <div class="tablewrap"><table><thead><tr><th>Programa</th><th>Cliente</th><th>Closer</th><th>Origen</th><th>Monto</th><th>Vencimiento</th><th>Estado</th><th>Cargado</th><th></th></tr></thead><tbody id="crows"><tr><td colspan="9" class="empty">Cargando…</td></tr></tbody></table></div>`
-  document.querySelectorAll('[data-t]').forEach(t=>t.onclick=()=>{cobTab=t.dataset.t;renderCobros()})
-  document.getElementById('c_add').onclick=async()=>{const g=id=>document.getElementById(id),mon=g('c_mon').value,monto=Number(g('c_monto').value||0)
-    let leadId=null;if(g('c_lead').value.trim()){const{data}=await sb.from('leads').select('id').ilike('nombre',g('c_lead').value.trim()).limit(1);if(data&&data[0])leadId=data[0].id}
-    const{error}=await sb.from('cuotas').insert({lead_id:leadId,lanzamiento_id:state.lanz.id,programa:g('c_prog').value.trim(),origen:g('c_org').value,moneda:mon,monto,monto_usd:monto,vencimiento:g('c_venc').value||null,billetera:g('c_bill').value.trim(),estado:'pendiente'})
-    if(error){toast('Error: '+error.message);return};toast('Cuota agregada ✓');renderCobros()}
-  // KPIs (separados por moneda)
-  const c=await cobrosResumen(),ckeys=Object.keys(c)
-  document.getElementById('cbk').innerHTML=ckeys.length?ckeys.map(mon=>{const x=c[mon]
-    return [['Cobrado total',x.cobrado],['Señas activadas',x.senas],['Al día',x.aldia],['Vencidas',x.vencidas],['Generado upsell',x.upsell],['Total activo',x.total]].map(([l,n])=>`<div class="fcell"><div class="n" style="font-size:20px">${fmtCur(n,mon)}</div><div class="l">${mon} · ${l}</div></div>`).join('')}).join(''):`<div class="fcell"><div class="n" style="font-size:24px">—</div><div class="l">Sin cobros</div></div>`
-  // tabla
-  const today=new Date().toISOString().slice(0,10);let q=sb.from('cuotas').select('*,leads(nombre),ventas(closer_id)').order('vencimiento',{ascending:true}).limit(300)
-  if(cobTab==='pend')q=q.eq('estado','pendiente')
-  const{data}=await q;document.getElementById('crows').innerHTML=(data&&data.length)?data.map(c=>{const est=c.estado==='pendiente'&&c.vencimiento&&c.vencimiento<today?'vencido':c.estado
-    return `<tr><td class="nm">${esc(c.programa||'—')}</td><td class="sub2">${esc(c.leads?c.leads.nombre:'—')}</td><td class="sub2">${esc(nameOf(c.ventas&&c.ventas.closer_id)||'—')}</td><td>${esc(c.origen||'')}</td><td class="nm">${fmtCur(c.monto,c.moneda)}</td><td class="sub2">${esc(c.vencimiento||'—')}</td><td><span class="chip ${est}">${est}</span></td><td class="sub2">${fmtDateTime(c.created_at)}</td><td>${c.estado!=='cobrado'?`<button class="pg" data-cob="${c.id}">Marcar cobrada</button>`:'✓'}${isMgr()?` <button class="pg" data-cuedit="${c.id}">Editar</button> <button class="pg" data-cudel="${c.id}">Borrar</button>`:''}</td></tr>`}).join(''):`<tr><td colspan="9" class="empty">Sin cuotas.</td></tr>`
-  document.querySelectorAll('[data-cob]').forEach(b=>b.onclick=async()=>{await sb.from('cuotas').update({estado:'cobrado',cobrado_at:new Date().toISOString()}).eq('id',b.dataset.cob);toast('Cobrada ✓');renderCobros()})
-  document.querySelectorAll('[data-cuedit]').forEach(b=>b.onclick=()=>{const c=(data||[]).find(x=>x.id===b.dataset.cuedit);if(c)openCuotaModal(c)})
-  document.querySelectorAll('[data-cudel]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Borrar esta cuota? También se borran sus pagos de comisión asociados.'))return
-    await sb.from('comision_pagos').delete().eq('origen_id',b.dataset.cudel)
-    const r=await delRow('cuotas',b.dataset.cudel);if(!r.ok){toast(r.msg);return}
-    toast('Cuota borrada ✓');renderCobros()})}
-function openCuotaModal(c){const ov=document.createElement('div');ov.className='overlay'
-  ov.innerHTML=`<div class="modal"><h2>Editar cuota</h2>
-    <div class="field"><label>Programa</label><input class="inp" id="cu_prog" value="${esc(c.programa||'')}"/></div>
-    <div class="row3"><div class="field"><label>Origen</label><input class="inp" id="cu_org" value="${esc(c.origen||'')}"/></div>
-    <div class="field"><label>Moneda</label><select id="cu_mon">${MONEDAS.map(m=>`<option ${c.moneda===m?'selected':''}>${m}</option>`).join('')}</select></div>
-    <div class="field"><label>Monto</label><input class="inp" id="cu_monto" type="number" value="${c.monto||0}"/></div></div>
-    <div class="row2"><div class="field"><label>Vencimiento</label><input class="inp" id="cu_venc" type="date" value="${c.vencimiento||''}"/></div>
-    <div class="field"><label>Estado</label><select id="cu_estado"><option value="pendiente" ${c.estado==='pendiente'?'selected':''}>pendiente</option><option value="cobrado" ${c.estado==='cobrado'?'selected':''}>cobrado</option></select></div></div>
-    <div class="field"><label>Billetera</label><input class="inp" id="cu_bill" value="${esc(c.billetera||'')}"/></div>
-    <div class="actions"><button class="btn ghost" id="cu_del">Borrar</button><div class="grow"></div><button class="btn ghost" id="cu_cancel">Cancelar</button><button class="btn primary" id="cu_save">Guardar</button></div></div>`
-  document.body.appendChild(ov);ov.onclick=e=>{if(e.target===ov)ov.remove()}
-  ov.querySelector('#cu_cancel').onclick=()=>ov.remove()
-  ov.querySelector('#cu_save').onclick=async()=>{const g=id=>ov.querySelector('#'+id)
-    const estado=g('cu_estado').value,monto=Number(g('cu_monto').value||0)
-    const p={programa:g('cu_prog').value.trim()||null,origen:g('cu_org').value.trim()||'manual',moneda:g('cu_mon').value,monto,monto_usd:monto,vencimiento:g('cu_venc').value||null,estado,billetera:g('cu_bill').value.trim()||null,cobrado_at:estado==='cobrado'?(c.cobrado_at||new Date().toISOString()):null}
-    const r=await updRow('cuotas',c.id,p);if(!r.ok){toast(r.msg);return}
-    toast('Cuota actualizada ✓');ov.remove();renderCobros()}
-  ov.querySelector('#cu_del').onclick=async()=>{if(!confirm('¿Borrar esta cuota? También se borran sus pagos de comisión asociados.'))return
-    await sb.from('comision_pagos').delete().eq('origen_id',c.id)
-    const r=await delRow('cuotas',c.id);if(!r.ok){toast(r.msg);return}
-    toast('Cuota borrada ✓');ov.remove();renderCobros()}}
-
-/* ================= VENTAS ================= */
-// Formulario de venta reutilizable (mismo en la sección Ventas y en el Reporte de llamada). p = prefijo de ids ('v_' o 'r_')
-function ventaFormHTML(p){return `
-  <div class="field"><label>Canal / origen</label><select id="${p}canal">${CANALES.map(c=>`<option value="${c[0]}">${c[1]}</option>`).join('')}</select><div class="sub2" style="margin-top:5px">Lanzamiento se asigna al lanzamiento activo. Funnel y Referido quedan aparte, no se mezclan.</div></div>
-  <div class="row3"><div class="field"><label>Forma de pago</label><select id="${p}forma">${FORMAS.map(f=>`<option>${f}</option>`).join('')}</select></div>
-    <div class="field"><label>Moneda</label><select id="${p}mon">${MONEDAS.map(m=>`<option>${m}</option>`).join('')}</select></div>
-    <div class="field"><label>Billetera / medio</label><input class="inp" id="${p}bill"/></div></div>
-  <div class="field"><label>Programa</label><input class="inp" id="${p}prog" placeholder="Programa vendido"/></div>
-  <div class="row2"><div class="field"><label>Setter (comisión)</label><select id="${p}setter"><option value="">— sin setter —</option>${state.setters.map(s=>`<option value="${s.id}">${esc(s.nombre)}</option>`).join('')}</select></div>
-    <div class="field"><label>Closer (comisión)</label><select id="${p}closer"><option value="">— sin closer —</option>${state.setters.map(s=>`<option value="${s.id}" ${s.id===(me&&me.id)?'selected':''}>${esc(s.nombre)}</option>`).join('')}</select></div></div>
-  ${isMgr()?`<div class="row2"><div class="field"><label>% Setter (comisión)</label><input class="inp" id="${p}csetter" type="number" step="0.5" placeholder="default del perfil"/></div><div class="field"><label>% Closer (comisión)</label><input class="inp" id="${p}ccloser" type="number" step="0.5" placeholder="default del perfil"/></div></div><div class="sub2" style="margin:-6px 0 12px">Se autocompleta con el % default de cada persona al elegirla — pisalo para casos puntuales (ej: venta por chat con condición distinta). Vacío = usa el default del perfil.</div>`:''}
-  <div class="field"><label>Equipo (para comisión del director)</label><select id="${p}equipo">${EQUIPOS.map(e=>`<option value="${e[0]}">${e[1]}</option>`).join('')}</select></div>
-  <div class="row3"><div class="field"><label>Ticket (total)</label><input class="inp" id="${p}ticket" type="number" placeholder="0"/></div>
-    <div class="field"><label>Dinero que pagó</label><input class="inp" id="${p}pago" type="number" placeholder="0"/></div>
-    <div class="field"><label>Dinero a cobrar</label><input class="inp" id="${p}cobrar" type="number" placeholder="0"/></div></div>
-  <div class="field"><label>Base comisionable (tope de comisión)</label><input class="inp" id="${p}basecom" type="number" placeholder="= ticket si no hay recargo"/><div class="sub2" style="margin-top:5px">Si cobrás recargo/interés por cuotas, poné acá el precio base (ej: 500). El setter y closer comisionan hasta este monto; el recargo no comisiona. Dejalo vacío si no hay recargo.</div></div>
-  <div id="${p}cuotasBox"></div>
-  <div class="field"><label>Seña a aplicar (opcional)</label><select id="${p}sena"><option value="">— sin seña —</option></select><div class="sub2" style="margin-top:5px">La seña no suma al ticket ni comisiona; entra al cash collected cuando se cobra la 1ª cuota.</div></div>
-  <div class="field"><label>Comprobante de pago</label><input class="inp" id="${p}file" type="file" accept="image/*,application/pdf" multiple style="padding:10px"/><div class="sub2" style="margin-top:5px">Podés seleccionar más de uno (ej: el cliente pagó en dos transferencias distintas).</div></div>
-  <div id="${p}compList"></div>`}
-// Comportamiento dinámico: recalcula "a cobrar" y muestra los renglones de cuotas pendientes
-function wireVentaForm(p){const g=id=>document.getElementById(p+id)
-  function build(){const ticket=Number(g('ticket').value||0),pago=Number(g('pago').value||0),forma=g('forma').value
-    const n=forma==='2 cuotas'?1:forma==='3 cuotas'?2:0,resto=Math.max(0,ticket-pago)
-    if(document.activeElement!==g('cobrar'))g('cobrar').value=resto?Number(resto.toFixed(2)):''
-    const box=g('cuotasBox'),cur=box.querySelectorAll('[data-cuota]').length
-    if(n===0){box.innerHTML='';return}
-    if(cur!==n){const each=n?resto/n:0;let rows=''
-      for(let i=1;i<=n;i++)rows+=`<div class="row2" data-cuota="${i}"><div class="field"><label>Cuota ${i+1} — monto</label><input class="inp cuotaMonto" type="number" value="${each?Number(each.toFixed(2)):''}"/></div><div class="field"><label>Vencimiento cuota ${i+1}</label><input class="inp cuotaVenc" type="date"/></div></div>`
-      box.innerHTML=`<div class="sechead">Cuotas pendientes (a cobrar)</div>${rows}`
-      box.querySelectorAll('.cuotaVenc').forEach((el,idx)=>{const d=new Date();d.setMonth(d.getMonth()+idx+1);el.value=d.toISOString().slice(0,10)})}}
-  g('ticket').oninput=build;g('pago').oninput=build;g('forma').onchange=build;build()
-  const setterSel=g('setter'),closerSel=g('closer'),csetterInp=g('csetter'),ccloserInp=g('ccloser')
-  if(setterSel&&csetterInp)setterSel.addEventListener('change',()=>{if(!csetterInp.value)csetterInp.value=pctOf(setterSel.value,'com_setter_pct')||''})
-  if(closerSel&&ccloserInp)closerSel.addEventListener('change',()=>{if(!ccloserInp.value)ccloserInp.value=pctOf(closerSel.value,'com_closer_pct')||''})}
-// Lee los valores del formulario de venta
-function readVentaForm(p){const g=id=>document.getElementById(p+id),cuotas=[]
-  document.querySelectorAll('#'+p+'cuotasBox [data-cuota]').forEach(r=>{const monto=Number(r.querySelector('.cuotaMonto').value||0),venc=r.querySelector('.cuotaVenc').value||null;if(monto>0)cuotas.push({monto,vencimiento:venc})})
-  return{canal:(g('canal')&&g('canal').value)||'lanzamiento',forma:g('forma').value,moneda:g('mon').value,billetera:g('bill').value.trim(),programa:g('prog').value.trim(),setter:g('setter').value||null,closer:(g('closer')&&g('closer').value)||null,equipo:(g('equipo')&&g('equipo').value)||null,sena:(g('sena')&&g('sena').value)||null,ticket:Number(g('ticket').value||0),pago:Number(g('pago').value||0),cobrar:Number(g('cobrar').value||0),baseComision:(g('basecom')&&Number(g('basecom').value))||0,comSetterPct:(g('csetter')&&g('csetter').value!==''?Number(g('csetter').value):null),comCloserPct:(g('ccloser')&&g('ccloser').value!==''?Number(g('ccloser').value):null),cuotas,files:(g('file').files?Array.from(g('file').files):[])}}
-// Sube el comprobante a Supabase Storage (bucket 'comprobantes') y devuelve la URL pública
-async function uploadComprobante(file){if(!file)return null
-  const ext=(file.name.split('.').pop()||'bin').toLowerCase(),rnd=Math.random().toString(36).slice(2,8)
-  const path=`${(state.lanz&&state.lanz.id)||'na'}/${Date.now()}-${rnd}.${ext}`
-  const{error}=await sb.storage.from('comprobantes').upload(path,file,{upsert:false,contentType:file.type||undefined})
-  if(error)throw error
-  return sb.storage.from('comprobantes').getPublicUrl(path).data.publicUrl}
-// Guarda la venta: sube comprobante, inserta venta, genera cuotas (pagada + pendientes) y cierra el lead
-const pctOf=(id,field)=>{const p=state.setters.find(x=>x.id===id);return p?Number(p[field]||0):0}
-async function saveVenta(v){const rate=1 // cada moneda se trackea por separado, sin conversión
-  let comprobante_url=v.currentComprobante||null
-  let nuevasUrls=[]
-  if(v.files&&v.files.length){nuevasUrls=await Promise.all(v.files.map(f=>uploadComprobante(f)));comprobante_url=nuevasUrls[0]}
-  const origen=v.reporteId?'closing':'venta'
-  const closerId=v.closer||v.closerId||me.id,setterId=v.setterId||v.setter||null
-  const com_setter_pct=v.comSetterPct!=null?v.comSetterPct:(setterId?pctOf(setterId,'com_setter_pct'):0)
-  const com_closer_pct=v.comCloserPct!=null?v.comCloserPct:pctOf(closerId,'com_closer_pct')
-  const canal=v.canal||'lanzamiento',lanzId=canal==='lanzamiento'?(state.lanz?state.lanz.id:null):null
-  const venta={lanzamiento_id:lanzId,canal,equipo:v.equipo||null,lead_id:v.leadId||null,cliente:v.cliente||null,closer_id:closerId,setter_id:setterId,com_setter_pct,com_closer_pct,reporte_id:v.reporteId||null,programa:v.programa||null,moneda:v.moneda,cotizacion:rate,ticket:v.ticket,base_comisionable:(Number(v.baseComision)>0?Number(v.baseComision):v.ticket),pagado:v.pago,a_cobrar:v.cobrar,forma_pago:v.forma,billetera:v.billetera||null,comprobante_url,origen}
-  let ventaId=v.editId
-  if(v.editId){
-    const{data:oc}=await sb.from('cuotas').select('id').eq('venta_id',v.editId)
-    const{data:os}=await sb.from('senas').select('id').eq('venta_id',v.editId)
-    const oldIds=[...(oc||[]).map(c=>c.id),...(os||[]).map(s=>s.id)]
-    if(oldIds.length)await sb.from('comision_pagos').delete().in('origen_id',oldIds)
-    await sb.from('cuotas').delete().eq('venta_id',v.editId)
-    await sb.from('senas').update({estado:'registrada',venta_id:null}).eq('venta_id',v.editId)
-    const{error}=await sb.from('ventas').update(venta).eq('id',v.editId);if(error)throw error
-  }else{const{data:vrow,error}=await sb.from('ventas').insert(venta).select().single();if(error)throw error;ventaId=vrow.id}
-  const cuotas=[]
-  if(v.pago>0)cuotas.push({venta_id:ventaId,lead_id:v.leadId||null,lanzamiento_id:lanzId,programa:v.programa,moneda:v.moneda,monto:v.pago,monto_usd:v.pago/(rate||1),estado:'cobrado',origen,billetera:v.billetera,comprobante_url,cobrado_at:new Date().toISOString(),vencimiento:new Date().toISOString().slice(0,10)})
-  ;(v.cuotas||[]).forEach(c=>cuotas.push({venta_id:ventaId,lead_id:v.leadId||null,lanzamiento_id:lanzId,programa:v.programa,moneda:v.moneda,monto:c.monto,monto_usd:c.monto/(rate||1),estado:'pendiente',origen,billetera:v.billetera,vencimiento:c.vencimiento}))
-  if(cuotas.length){const{error:ce}=await sb.from('cuotas').insert(cuotas);if(ce)throw ce}
-  if(v.sena)await sb.from('senas').update({venta_id:ventaId,estado:'aplicada'}).eq('id',v.sena)
-  if(v.leadId)await sb.from('leads').update({estado:'Cerrado'}).eq('id',v.leadId)
-  if(nuevasUrls.length)await sb.from('venta_comprobantes').insert(nuevasUrls.map(url=>({venta_id:ventaId,url})))
-  return{id:ventaId}}
-async function deleteVenta(id){
-  const{data:oc}=await sb.from('cuotas').select('id').eq('venta_id',id)
-  const{data:os}=await sb.from('senas').select('id').eq('venta_id',id)
-  const oldIds=[...(oc||[]).map(c=>c.id),...(os||[]).map(s=>s.id)]
-  if(oldIds.length)await sb.from('comision_pagos').delete().in('origen_id',oldIds)
-  await sb.from('cuotas').delete().eq('venta_id',id)
-  await sb.from('senas').update({estado:'registrada',venta_id:null}).eq('venta_id',id)
-  const{error}=await sb.from('ventas').delete().eq('id',id);if(error)throw error}
-async function deleteSena(id){const{error}=await sb.from('senas').delete().eq('id',id);if(error)throw error}
-async function renderVentas(){
-  const{data:lanzs}=await sb.from('lanzamientos').select('id,numero,nombre').order('numero',{ascending:true,nullsFirst:false})
-  view().innerHTML=head('VENTAS','Ventas',`<select class="pill" id="v_src" style="margin-right:8px">${srcOptions(ventasSrc,lanzs)}</select><button class="btn primary" id="v_new">+ Cargar venta</button>`)
-  +`<div class="funnel" id="vk"></div>
-    <div class="tablewrap"><table><thead><tr><th>Cliente</th><th>Canal</th><th>Fecha</th><th>Programa</th><th>Forma</th><th>Ticket</th><th>Pagó</th><th>A cobrar</th><th>Comprobante</th><th>Cargado</th></tr></thead><tbody id="vrows"><tr><td colspan="10" class="empty">Cargando…</td></tr></tbody></table></div>`
-  document.getElementById('v_new').onclick=()=>openVentaModal()
-  document.getElementById('v_src').onchange=e=>{ventasSrc=e.target.value;renderVentas()}
-  let q=sb.from('ventas').select('*,leads(nombre)').order('fecha',{ascending:false}).limit(300);if(!isMgr())q=q.eq('closer_id',me.id)
-  q=srcVentas(q,ventasSrc)
-  const{data,error}=await q
-  if(error){document.getElementById('vrows').innerHTML=`<tr><td colspan="9" class="empty">Error: ${esc(error.message)}</td></tr>`;return}
-  // resumen separado por moneda — cada moneda se trackea por separado, sin conversión
-  const monedasV=Array.from(new Set((data||[]).map(x=>x.moneda||'USD')))
-  const sumMon=(k,mon)=>(data||[]).filter(x=>(x.moneda||'USD')===mon).reduce((a,x)=>a+Number(x[k]||0),0)
-  document.getElementById('vk').innerHTML=monedasV.length?monedasV.map(mon=>{
-    const cnt=(data||[]).filter(x=>(x.moneda||'USD')===mon).length
-    return [['Ventas',cnt],['Ticket total',fmtCur(sumMon('ticket',mon),mon)],['Cobrado',fmtCur(sumMon('pagado',mon),mon)],['A cobrar',fmtCur(sumMon('a_cobrar',mon),mon)]].map(([l,n])=>`<div class="fcell"><div class="n" style="font-size:20px">${typeof n==='number'?num(n):n}</div><div class="l">${mon} · ${l}</div></div>`).join('')
-  }).join(''):`<div class="fcell"><div class="n" style="font-size:24px">0</div><div class="l">Ventas</div></div>`
-  const canalLbl=c=>c==='funnel'?'Funnel':c==='referido'?'Referido':'Lanzamiento'
-  document.getElementById('vrows').innerHTML=(data&&data.length)?data.map(v=>`<tr class="clk" data-id="${v.id}"><td class="nm">${esc(v.leads?v.leads.nombre:(v.cliente||'—'))}</td><td class="sub2">${canalLbl(v.canal)}</td><td class="sub2">${fmtDate(v.fecha)}</td><td>${esc(v.programa||'—')}</td><td>${esc(v.forma_pago||'—')}</td><td class="nm">${fmtCur(v.ticket,v.moneda)}</td><td>${fmtCur(v.pagado,v.moneda)}</td><td>${fmtCur(v.a_cobrar,v.moneda)}</td><td>${v.comprobante_url?`<a href="${esc(v.comprobante_url)}" target="_blank" rel="noopener">ver</a>`:'<span class="sub2">—</span>'}</td><td class="sub2">${fmtDateTime(v.created_at)}</td></tr>`).join(''):`<tr><td colspan="10" class="empty">Sin ventas en este origen.</td></tr>`
-  document.querySelectorAll('#vrows tr[data-id]').forEach(tr=>tr.onclick=e=>{if(e.target.tagName==='A')return;openVentaModal(data.find(x=>x.id===tr.dataset.id))})}
-async function openVentaModal(venta){const isEdit=!!venta
-  const{data:leads}=await sb.from('leads').select('id,nombre,asesor_id').eq('lanzamiento_id',state.lanz.id).in('estado',['Agendó','Asistió','Confirmó clase','Cerrado']).order('updated_at',{ascending:false}).limit(300)
-  const ov=document.createElement('div');ov.className='overlay'
-  ov.innerHTML=`<div class="modal"><h2>${isEdit?'Editar venta':'Cargar venta'}</h2>
-    ${isEdit?'<p class="cdesc" style="color:var(--warn)">Editar regenera las cuotas de esta venta. Si ya habías marcado cuotas cobradas o comisiones pagadas, se reinician.</p>':''}
-    <div class="row2"><div class="field"><label>Lead (agenda)</label><select id="v_lead"><option value="">— manual / nuevo —</option>${(leads||[]).map(l=>`<option value="${l.id}">${esc(l.nombre)}</option>`).join('')}</select></div><div class="field"><label>Nombre (si es manual)</label><input class="inp" id="v_cliente" placeholder="Nombre del cliente"/></div></div>
-    ${ventaFormHTML('v_')}
-    <div class="actions">${isEdit?'<button class="btn danger" id="v_del">Eliminar venta</button>':''}<div class="grow"></div><button class="btn ghost" id="v_cancel">Cancelar</button><button class="btn primary" id="v_save">${isEdit?'Guardar cambios':'Guardar venta'}</button></div></div>`
-  document.body.appendChild(ov);ov.onclick=e=>{if(e.target===ov)ov.remove()}
-  ov.querySelector('#v_cancel').onclick=()=>ov.remove();wireVentaForm('v_')
-  let vSenas=[]
-  const gid=id=>document.getElementById('v_'+id)
-  const setEquipoFromSetter=()=>{const st=state.setters.find(x=>x.id===gid('setter').value),eq=gid('equipo');if(eq&&!isEdit&&st&&st.equipo)eq.value=st.equipo}
-  const vLead=ov.querySelector('#v_lead');vLead.onchange=()=>{const l=(leads||[]).find(x=>x.id===vLead.value),ss=gid('setter');if(ss){ss.value=(l&&l.asesor_id)||'';setEquipoFromSetter()}const sm=vSenas.find(s=>s.lead_id===vLead.value),sn=gid('sena');if(sn&&!isEdit)sn.value=sm?sm.id:''}
-  const vSet=gid('setter');if(vSet)vSet.onchange=setEquipoFromSetter
-  vSenas=await loadSenaOptions('v_')
-  if(isEdit){
-    vLead.value=venta.lead_id||'';gid('cliente').value=venta.cliente||''
-    gid('canal').value=venta.canal||'lanzamiento'
-    gid('forma').value=venta.forma_pago||'Un pago'
-    gid('mon').value=venta.moneda||'USD'
-    gid('bill').value=venta.billetera||'';gid('prog').value=venta.programa||''
-    if(venta.setter_id)gid('setter').value=venta.setter_id
-    if(venta.closer_id)gid('closer').value=venta.closer_id
-    if(gid('csetter')&&venta.com_setter_pct!=null)gid('csetter').value=venta.com_setter_pct
-    if(gid('ccloser')&&venta.com_closer_pct!=null)gid('ccloser').value=venta.com_closer_pct
-    gid('equipo').value=venta.equipo||''
-    gid('ticket').value=venta.ticket!=null?venta.ticket:'';gid('pago').value=venta.pagado!=null?venta.pagado:''
-    if(venta.base_comisionable!=null)gid('basecom').value=venta.base_comisionable
-    gid('forma').dispatchEvent(new Event('change'))
-    const{data:pc}=await sb.from('cuotas').select('monto,vencimiento').eq('venta_id',venta.id).eq('estado','pendiente').order('vencimiento')
-    const rows=ov.querySelectorAll('#v_cuotasBox [data-cuota]')
-    ;(pc||[]).forEach((c,i)=>{const r=rows[i];if(r){r.querySelector('.cuotaMonto').value=c.monto;if(c.vencimiento)r.querySelector('.cuotaVenc').value=c.vencimiento}})
-    const{data:sn}=await sb.from('senas').select('id,monto,moneda').eq('venta_id',venta.id).limit(1)
-    if(sn&&sn[0]){const sel=gid('sena'),o=document.createElement('option');o.value=sn[0].id;o.textContent='(seña aplicada · '+esc(sn[0].moneda)+' '+num(sn[0].monto)+')';o.selected=true;sel.appendChild(o)}
-    gid('ticket').dispatchEvent(new Event('input'))
-    const{data:comps}=await sb.from('venta_comprobantes').select('id,url').eq('venta_id',venta.id).order('created_at')
-    const listaComps=comps&&comps.length?comps:(venta.comprobante_url?[{id:null,url:venta.comprobante_url}]:[])
-    const compEl=gid('compList')
-    if(compEl)compEl.innerHTML=listaComps.length?`<div class="sub2" style="margin:-6px 0 12px">Comprobantes ya cargados: ${listaComps.map((c,i)=>`<a href="${esc(c.url)}" target="_blank" rel="noopener">ver ${i+1}</a>`).join(' · ')} — lo que subas arriba se agrega, no reemplaza.</div>`:''
-    ov.querySelector('#v_del').onclick=async()=>{if(confirm('¿Eliminar esta venta? Se borran sus cuotas y comisiones, y se libera la seña si tenía.')){try{await deleteVenta(venta.id);toast('Venta eliminada ✓');ov.remove();renderVentas()}catch(e){toast('Error: '+(e.message||e))}}}
-  }
-  ov.querySelector('#v_save').onclick=async()=>{const btn=ov.querySelector('#v_save'),f=readVentaForm('v_')
-    const leadId=gid('lead').value||null,cliente=gid('cliente').value.trim()
-    if(!f.ticket){toast('Poné el ticket (total)');return}
-    if(!leadId&&!cliente){toast('Elegí un lead o poné un nombre');return}
-    btn.textContent='Guardando…'
-    try{await saveVenta({...f,leadId,cliente,closerId:isEdit?(venta.closer_id||me.id):me.id,editId:isEdit?venta.id:null,currentComprobante:isEdit?venta.comprobante_url:null});toast(isEdit?'Cambios guardados ✓':'Venta cargada ✓');ov.remove();renderVentas()}
-    catch(e){toast('Error: '+(e.message||e));btn.textContent=isEdit?'Guardar cambios':'Guardar venta'}}}
-
-/* ================= SEÑAS ================= */
-// Llena el <select> de seña a aplicar (solo señas en estado 'registrada'). Devuelve la lista para autoseleccionar por lead.
-async function loadSenaOptions(p){const sel=document.getElementById(p+'sena');if(!sel)return[]
-  const{data}=await sb.from('senas').select('id,monto,moneda,cliente,lead_id,leads(nombre)').eq('estado','registrada').order('fecha',{ascending:false}).limit(300)
-  sel.innerHTML=`<option value="">— sin seña —</option>`+(data||[]).map(s=>`<option value="${s.id}">${esc(s.leads?s.leads.nombre:(s.cliente||'—'))} · ${esc(s.moneda)} ${num(s.monto)}</option>`).join('')
-  return data||[]}
-async function renderSenas(){view().innerHTML=head('SEÑAS · '+esc((state.lanz&&state.lanz.nombre)||'LANZAMIENTO'),'Señas','<button class="btn primary" id="s_new">+ Registrar seña</button>')
-  +`<div class="funnel" id="sk"></div>
-    <div class="tablewrap"><table><thead><tr><th>Cliente</th><th>Setter</th><th>Closer</th><th>Fecha</th><th>Monto</th><th>Estado</th><th>Aplicada</th><th>Comprobante</th><th>Cargado</th></tr></thead><tbody id="srows"><tr><td colspan="9" class="empty">Cargando…</td></tr></tbody></table><div class="foot"><span>La seña queda 'en espera' hasta que se aplica a una venta; recién suma al cash collected cuando esa venta cobra su 1ª cuota. Nunca comisiona.</span></div></div>`
-  document.getElementById('s_new').onclick=()=>openSenaModal()
-  let q=sb.from('senas').select('*,leads(nombre)').order('fecha',{ascending:false}).limit(300);if(!isMgr())q=q.eq('closer_id',me.id)
-  const{data,error}=await q
-  if(error){document.getElementById('srows').innerHTML=`<tr><td colspan="8" class="empty">Error: ${esc(error.message)}</td></tr>`;return}
-  const byMon=(arr,mon)=>arr.filter(s=>(s.moneda||'USD')===mon).reduce((a,x)=>a+Number(x.monto||0),0)
-  const reg=(data||[]).filter(s=>s.estado==='registrada'),apl=(data||[]).filter(s=>s.estado==='aplicada')
-  const monedasEnUso=Array.from(new Set((data||[]).map(s=>s.moneda||'USD')))
-  document.getElementById('sk').innerHTML=monedasEnUso.length?monedasEnUso.map(mon=>[['En espera',fmtCur(byMon(reg,mon),mon)],['Aplicadas',fmtCur(byMon(apl,mon),mon)],['Total',fmtCur(byMon(data||[],mon),mon)]].map(([l,n])=>`<div class="fcell"><div class="n" style="font-size:22px">${n}</div><div class="l">${mon} · ${l}</div></div>`).join('')).join(''):`<div class="fcell"><div class="n" style="font-size:24px">—</div><div class="l">Sin señas</div></div>`
-  const chip=e=>e==='registrada'?'<span class="chip pendiente">en espera</span>':e==='aplicada'?'<span class="chip cobrado">aplicada</span>':'<span class="chip vencido">anulada</span>'
-  document.getElementById('srows').innerHTML=(data&&data.length)?data.map(s=>`<tr class="clk" data-id="${s.id}"><td class="nm">${esc(s.leads?s.leads.nombre:(s.cliente||'—'))}</td><td class="sub2">${esc(nameOf(s.setter_id)||'—')}</td><td class="sub2">${esc(nameOf(s.closer_id)||'—')}</td><td class="sub2">${fmtDate(s.fecha)}</td><td class="nm">${fmtCur(s.monto,s.moneda)}</td><td>${chip(s.estado)}</td><td class="sub2">${s.venta_id?'sí':'—'}</td><td>${s.comprobante_url?`<a href="${esc(s.comprobante_url)}" target="_blank" rel="noopener">ver</a>`:'<span class="sub2">—</span>'}</td><td class="sub2">${fmtDateTime(s.created_at)}</td></tr>`).join(''):`<tr><td colspan="9" class="empty">Sin señas registradas.</td></tr>`
-  document.querySelectorAll('#srows tr[data-id]').forEach(tr=>tr.onclick=e=>{if(e.target.tagName==='A')return;const s=data.find(x=>x.id===tr.dataset.id);if(s.estado==='aplicada'){toast('Seña aplicada: editala o quitala desde la venta');return}openSenaModal(s)})}
-async function openSenaModal(sena){const isEdit=!!sena
-  const{data:leads}=await sb.from('leads').select('id,nombre,asesor_id').eq('lanzamiento_id',state.lanz.id).in('estado',['Agendó','Asistió','Confirmó clase','Cerrado']).order('updated_at',{ascending:false}).limit(300)
-  const ov=document.createElement('div');ov.className='overlay'
-  ov.innerHTML=`<div class="modal"><h2>${isEdit?'Editar seña':'Registrar seña'}</h2>
-    <div class="row2"><div class="field"><label>Lead</label><select id="s_lead"><option value="">— manual / nuevo —</option>${(leads||[]).map(l=>`<option value="${l.id}">${esc(l.nombre)}</option>`).join('')}</select></div><div class="field"><label>Nombre (si es manual)</label><input class="inp" id="s_cliente"/></div></div>
-    <div class="row2"><div class="field"><label>Setter</label><select id="s_setter"><option value="">— sin setter —</option>${state.setters.map(s=>`<option value="${s.id}">${esc(s.nombre)}</option>`).join('')}</select></div><div class="field"><label>Closer</label><select id="s_closer"><option value="">— sin closer —</option>${state.setters.map(s=>`<option value="${s.id}" ${s.id===(me&&me.id)?'selected':''}>${esc(s.nombre)}</option>`).join('')}</select></div></div>
-    <div class="row3"><div class="field"><label>Moneda</label><select id="s_mon">${MONEDAS.map(m=>`<option>${m}</option>`).join('')}</select></div><div class="field"><label>Monto</label><input class="inp" id="s_monto" type="number" placeholder="0"/></div><div class="field"><label>Billetera</label><input class="inp" id="s_bill"/></div></div>
-    <div class="field"><label>Comprobante</label><input class="inp" id="s_file" type="file" accept="image/*,application/pdf" style="padding:10px"/>${isEdit&&sena.comprobante_url?`<div class="sub2" style="margin-top:5px">Actual: <a href="${esc(sena.comprobante_url)}" target="_blank" rel="noopener">ver</a> — subí uno nuevo solo para reemplazar.</div>`:''}</div>
-    <div class="actions">${isEdit?'<button class="btn danger" id="s_del">Eliminar</button>':''}<div class="grow"></div><button class="btn ghost" id="s_cancel">Cancelar</button><button class="btn primary" id="s_save">${isEdit?'Guardar cambios':'Guardar seña'}</button></div></div>`
-  document.body.appendChild(ov);ov.onclick=e=>{if(e.target===ov)ov.remove()};ov.querySelector('#s_cancel').onclick=()=>ov.remove()
-  const slead=document.getElementById('s_lead');slead.onchange=()=>{const l=(leads||[]).find(x=>x.id===slead.value),ss=document.getElementById('s_setter');if(ss&&!isEdit)ss.value=(l&&l.asesor_id)||''}
-  if(isEdit){const g=id=>document.getElementById(id)
-    g('s_lead').value=sena.lead_id||'';g('s_cliente').value=sena.cliente||'';g('s_mon').value=sena.moneda||'USD';g('s_monto').value=sena.monto!=null?sena.monto:'';g('s_bill').value=sena.billetera||''
-    if(sena.setter_id)g('s_setter').value=sena.setter_id;if(sena.closer_id)g('s_closer').value=sena.closer_id
-    g('s_del').onclick=async()=>{if(confirm('¿Eliminar esta seña?')){try{await deleteSena(sena.id);toast('Seña eliminada ✓');ov.remove();renderSenas()}catch(e){toast('Error: '+(e.message||e))}}}
-  }
-  ov.querySelector('#s_save').onclick=async()=>{const btn=ov.querySelector('#s_save'),g=id=>document.getElementById(id)
-    const leadId=g('s_lead').value||null,cliente=g('s_cliente').value.trim(),mon=g('s_mon').value,monto=Number(g('s_monto').value||0)
-    if(!monto){toast('Poné el monto de la seña');return};if(!leadId&&!cliente){toast('Elegí un lead o poné un nombre');return}
-    btn.textContent='Guardando…'
-    try{const rate=1 // cada moneda se trackea por separado, sin conversión
-      let comprobante_url=isEdit?sena.comprobante_url||null:null;const nf=(g('s_file').files&&g('s_file').files[0])||null;if(nf)comprobante_url=await uploadComprobante(nf)
-      const row={lanzamiento_id:state.lanz?state.lanz.id:null,lead_id:leadId,cliente:cliente||null,setter_id:g('s_setter').value||null,closer_id:g('s_closer').value||me.id,moneda:mon,cotizacion:rate,monto,monto_usd:monto/(rate||1),billetera:g('s_bill').value.trim(),comprobante_url}
-      const{error}=isEdit?await sb.from('senas').update(row).eq('id',sena.id):await sb.from('senas').insert({...row,estado:'registrada'})
-      if(error)throw error;toast(isEdit?'Seña actualizada ✓':'Seña registrada ✓');ov.remove();renderSenas()}
-    catch(e){toast('Error: '+(e.message||e));btn.textContent=isEdit?'Guardar cambios':'Guardar seña'}}}
-
-/* ================= FACTURACIÓN ================= */
-async function renderFacturacion(){
-  const{data:lanzs}=await sb.from('lanzamientos').select('id,numero,nombre').order('numero',{ascending:true,nullsFirst:false})
-  if(facLanzFilter===null)facLanzFilter=(state.lanz&&state.lanz.id)||'all'
-  view().innerHTML=head('FACTURACIÓN','Facturación y cash collected',`<select class="pill" id="fc_lanz">${srcOptions(facLanzFilter,lanzs)}</select>`)+`<div class="funnel" id="fk"></div><div id="facBody"><div class="empty" style="padding:24px">Cargando…</div></div>`
-  document.getElementById('fc_lanz').onchange=e=>{facLanzFilter=e.target.value;renderFacturacion()}
-  // Cada moneda se trackea por separado, sin conversión — nada de cotización acá.
-  let vq=srcVentas(sb.from('ventas').select('id,moneda,ticket'),facLanzFilter)
-  const{data:ventas,error}=await vq
-  if(error){document.getElementById('facBody').innerHTML=`<div class="empty" style="padding:24px">Error: ${esc(error.message)}</div>`;return}
-  let cq=srcEmbed(sb.from('cuotas').select('monto,estado,moneda,billetera,venta_id,ventas!inner(lanzamiento_id,canal)'),facLanzFilter)
-  const{data:cuotas}=await cq
-  let sq=srcEmbed(sb.from('senas').select('monto,moneda,billetera,venta_id,ventas!inner(lanzamiento_id,canal)').eq('estado','aplicada'),facLanzFilter)
-  const{data:senas}=await sq
-  // acumular por moneda
-  const M={} // moneda -> {fact,cash,pend}
-  const slot=m=>M[m]=M[m]||{fact:0,cash:0,pend:0}
-  const W={} // billetera -> {moneda: monto}
-  const addW=(b,mon,amt)=>{const k=(b&&b.trim())||'(sin especificar)',w=W[k]=W[k]||{},c=mon||'USD';w[c]=(w[c]||0)+Number(amt||0)}
-  ;(ventas||[]).forEach(v=>{const m=v.moneda||'USD',a=slot(m);a.fact+=Number(v.ticket||0)})
-  const ventasConCobro=new Set()
-  ;(cuotas||[]).forEach(c=>{const m=c.moneda||'USD',a=slot(m)
-    if(c.estado==='cobrado'){if(c.venta_id)ventasConCobro.add(c.venta_id);a.cash+=Number(c.monto||0);addW(c.billetera,c.moneda,c.monto)}
-    else{a.pend+=Number(c.monto||0)}})
-  ;(senas||[]).forEach(s=>{if(!s.venta_id||!ventasConCobro.has(s.venta_id))return;const m=s.moneda||'USD',a=slot(m);a.cash+=Number(s.monto||0);addW(s.billetera,s.moneda,s.monto)})
-  const orden=['ARS','USD','EUR'].filter(m=>M[m]).concat(Object.keys(M).filter(m=>!['ARS','USD','EUR'].includes(m)))
-  document.getElementById('fk').innerHTML=orden.length?orden.map(mon=>{const a=M[mon]
-    return[['Facturación',a.fact],['Cash collected',a.cash],['Por cobrar',a.pend]].map(([l,n])=>`<div class="fcell"><div class="n" style="font-size:20px">${fmtCur(n,mon)}</div><div class="l">${mon} · ${l}</div></div>`).join('')}).join(''):`<div class="fcell"><div class="n" style="font-size:24px">—</div><div class="l">Sin ventas</div></div>`
-  const rowsCur=(mon,a)=>`<div class="card" style="margin:0 30px 16px"><h3>Ventas en ${mon}</h3>
-    <div class="listrow"><span style="flex:1" class="sub2">Facturación (ticket total)</span><span class="nm">${fmtCur(a.fact,mon)}</span></div>
-    <div class="listrow"><span style="flex:1" class="sub2">Cash collected</span><span class="nm">${fmtCur(a.cash,mon)}</span></div>
-    <div class="listrow"><span style="flex:1" class="sub2">Por cobrar</span><span class="nm">${fmtCur(a.pend,mon)}</span></div></div>`
-  const cards=orden.length?orden.map(m=>rowsCur(m,M[m])).join(''):`<div class="empty" style="padding:24px">Sin ventas cargadas todavía.</div>`
-  const curOrd=o=>['ARS','USD','EUR'].filter(m=>o[m]!=null).concat(Object.keys(o).filter(m=>!['ARS','USD','EUR'].includes(m)))
-  const wl=Object.keys(W).sort()
-  const wallets=`<div class="card" style="margin:0 30px 24px"><h3>Cash por billetera</h3><p class="cdesc">Cash collected por medio de cobro (incluye señas activadas), desglosado por moneda.</p>${wl.length?wl.map(w=>{const parts=curOrd(W[w]).map(m=>fmtCur(W[w][m],m)).join('  ·  ')
-    return `<div class="listrow"><span style="flex:1"><span class="sub2">${esc(w)}</span></span><span class="nm">${parts}</span></div>`}).join(''):'<div class="empty" style="padding:12px">Sin cobros todavía.</div>'}</div>`
-  document.getElementById('facBody').innerHTML=cards+wallets}
-
-/* ================= COMISIONES ================= */
-let comLanzFilter=null,COM_LINES=[],COM_PAID=new Set(),MANUAL_PAG={},facLanzFilter=null,ventasSrc='all'
-const lanzLabel=l=>(l.numero!=null?('N° '+l.numero+' · '):'')+esc(l.nombre||'Lanzamiento')
-async function renderComisiones(){
-  const{data:lanzs}=await sb.from('lanzamientos').select('id,numero,nombre').order('numero',{ascending:true,nullsFirst:false})
-  if(comLanzFilter===null)comLanzFilter=(state.lanz&&state.lanz.id)||'all'
-  const actions=`<select class="pill" id="cm_lanz" style="margin-right:8px">${srcOptions(comLanzFilter,lanzs)}</select>${isMgr()?'<button class="btn ghost" id="cm_lanzmgr">Lanzamientos</button>':''}`
-  view().innerHTML=head('COMISIONES','Comisiones',actions)+`<div id="cfgWrap"></div><div class="funnel" id="ck"></div><div id="comResumen"></div>
-    <div class="split">
-      <div class="card" style="margin:0"><h3>Setters</h3><p class="cdesc">Comisión por el lead trabajado / agendado.</p><div id="setTbl"><div class="empty" style="padding:24px">Cargando…</div></div></div>
-      <div class="card" style="margin:0"><h3>Closers</h3><p class="cdesc">Comisión por la venta cerrada.</p><div id="cloTbl"><div class="empty" style="padding:24px">Cargando…</div></div></div>
-    </div>
-    <div class="card" style="margin:0 30px 16px"><h3>Directores comerciales</h3><p class="cdesc">Comisión sobre la facturación total (ticket) de las ventas de su equipo — sin topes.</p><div id="dirTbl"><div class="empty" style="padding:24px">Cargando…</div></div></div>
-    <p class="cdesc" style="margin:0 30px 24px">La comisión se genera sobre la plata efectivamente cobrada (cuotas en estado cobrado). Cada venta congela el % del momento.</p>`
-  document.getElementById('cm_lanz').onchange=e=>{comLanzFilter=e.target.value;renderComisiones()}
-  const nb=document.getElementById('cm_lanzmgr');if(nb)nb.onclick=openLanzModal
-  if(isMgr())renderComConfig()
-  renderComResumen()
-  // Cada moneda se trackea por separado, sin conversión — nada de cotización acá.
-  let vq=sb.from('ventas').select('id,cliente,lead_id,leads(nombre),setter_id,closer_id,com_setter_pct,com_closer_pct,lanzamiento_id,moneda,base_comisionable,ticket,equipo')
-  vq=srcVentas(vq,comLanzFilter)
-  const{data:ventas,error:ve}=await vq
-  if(ve){document.getElementById('setTbl').innerHTML=`<div class="empty" style="padding:24px">Error: ${esc(ve.message)}</div>`;return}
-  const vmap={};(ventas||[]).forEach(v=>vmap[v.id]=v)
-  let q=sb.from('cuotas').select('id,monto,venta_id,ventas!inner(lanzamiento_id,canal)').eq('estado','cobrado').limit(10000)
-  q=srcEmbed(q,comLanzFilter)
-  const{data:cuotas}=await q
-  let sq=sb.from('senas').select('id,monto,venta_id,ventas!inner(lanzamiento_id,canal)').eq('estado','aplicada').limit(10000)
-  sq=srcEmbed(sq,comLanzFilter)
-  const{data:senas}=await sq
-  const{data:pagos}=await sb.from('comision_pagos').select('origen_tipo,origen_id,rol').limit(20000)
-  const paid=new Set((pagos||[]).map(p=>p.origen_tipo+':'+p.origen_id+':'+p.rol))
-  const{data:manuales}=await sb.from('pagos_manuales').select('persona_id,rol,moneda,monto_usd').limit(20000)
-  const manualAgg={};(manuales||[]).forEach(m=>{const k=m.persona_id+':'+m.rol+':'+(m.moneda||'USD');manualAgg[k]=(manualAgg[k]||0)+Number(m.monto_usd||0)})
-  MANUAL_PAG=manualAgg
-  const lines=[],ventasConCobro=new Set()
-  const push=(tipo,id,comBase,v)=>{const label=(v.leads&&v.leads.nombre)||v.cliente||'—',moneda=v.moneda||'USD'
-    if(v.setter_id)lines.push({tipo,id,ventaId:v.id,rol:'setter',personaId:v.setter_id,moneda,base:comBase,pct:Number(v.com_setter_pct||0),monto:comBase*Number(v.com_setter_pct||0)/100,label,lanzId:v.lanzamiento_id})
-    if(v.closer_id)lines.push({tipo,id,ventaId:v.id,rol:'closer',personaId:v.closer_id,moneda,base:comBase,pct:Number(v.com_closer_pct||0),monto:comBase*Number(v.com_closer_pct||0)/100,label,lanzId:v.lanzamiento_id})}
-  const byV={}
-  ;(cuotas||[]).forEach(c=>{const v=vmap[c.venta_id];if(!v)return;ventasConCobro.add(c.venta_id);(byV[c.venta_id]=byV[c.venta_id]||[]).push({tipo:'cuota',id:c.id,monto:Number(c.monto||0)})})
-  ;(senas||[]).forEach(s=>{const v=vmap[s.venta_id];if(!v||!ventasConCobro.has(s.venta_id))return;(byV[s.venta_id]=byV[s.venta_id]||[]).push({tipo:'sena',id:s.id,monto:Number(s.monto||0)})})
-  Object.keys(byV).forEach(vid=>{const v=vmap[vid],cap=(v.base_comisionable!=null&&Number(v.base_comisionable)>0)?Number(v.base_comisionable):Infinity;let cum=0
-    byV[vid].forEach(ev=>{const prev=Math.min(cum,cap);cum+=ev.monto;const now=Math.min(cum,cap);push(ev.tipo,ev.id,Math.max(0,now-prev),v)})})
-  // comisión de director: sobre la facturación completa (ticket) de las ventas de su equipo, SIN topes
-  ;(ventas||[]).forEach(v=>{const dir=directorDe(v.equipo);if(!dir||!(Number(dir.com_director_pct)>0))return
-    const base=Number(v.ticket||0),pct=Number(dir.com_director_pct)||0,moneda=v.moneda||'USD'
-    lines.push({tipo:'venta',id:v.id,ventaId:v.id,rol:'director',personaId:dir.id,moneda,base,pct,monto:base*pct/100,label:(v.leads&&v.leads.nombre)||v.cliente||'—',lanzId:v.lanzamiento_id})})
-  COM_LINES=lines;COM_PAID=paid
-  const roleAgg=rol=>{const o={};lines.filter(l=>l.rol===rol).forEach(l=>{const k=l.personaId+':'+l.moneda,a=o[k]=o[k]||{dev:0,pag:0,personaId:l.personaId,moneda:l.moneda};a.dev+=l.monto;if(paid.has(l.tipo+':'+l.id+':'+l.rol))a.pag+=l.monto})
-    Object.keys(o).forEach(k=>{o[k].pag+=Number(manualAgg[o[k].personaId+':'+rol+':'+o[k].moneda]||0)});return o}
-  const setAgg=roleAgg('setter'),cloAgg=roleAgg('closer'),dirAgg=roleAgg('director')
-  // totales por moneda (nunca se suman entre monedas)
-  const totByMon={}
-  ;[setAgg,cloAgg,dirAgg].forEach(o=>Object.values(o).forEach(x=>{const t=totByMon[x.moneda]=totByMon[x.moneda]||{dev:0,pag:0};t.dev+=x.dev;t.pag+=x.pag}))
-  const monOrd=['USD','ARS','EUR'].filter(m=>totByMon[m]).concat(Object.keys(totByMon).filter(m=>!['USD','ARS','EUR'].includes(m)))
-  document.getElementById('ck').innerHTML=monOrd.length?monOrd.map(mon=>{const t=totByMon[mon]
-    return[['Ganado',t.dev],['Pagado',t.pag],['Pendiente',t.dev-t.pag]].map(([l,n])=>`<div class="fcell"><div class="n" style="font-size:20px">${fmtCur(n,mon)}</div><div class="l">${mon} · ${l}</div></div>`).join('')}).join(''):`<div class="fcell"><div class="n" style="font-size:24px">—</div><div class="l">Sin comisiones</div></div>`
-  const tbl=(o,rol)=>{const list=Object.values(o).map(x=>{const p=state.setters.find(y=>y.id===x.personaId);return{id:x.personaId,moneda:x.moneda,nombre:(p&&p.nombre)||'—',dev:x.dev,pag:x.pag,pend:x.dev-x.pag}}).filter(r=>r.dev>0.005).sort((a,b)=>b.pend-a.pend)
-    return list.length?`<div class="tablewrap" style="margin:0"><table><thead><tr><th>Persona</th><th>Moneda</th><th>Ganado</th><th>Pagado</th><th>Pend.</th><th></th></tr></thead><tbody>${list.map(r=>`<tr><td><span class="nm" data-det="${rol}|${r.id}|${r.moneda}" style="cursor:pointer;border-bottom:1px dotted var(--faint)">${esc(r.nombre)}</span></td><td class="sub2">${r.moneda}</td><td>${fmtCur(r.dev,r.moneda)}</td><td>${fmtCur(r.pag,r.moneda)}</td><td class="nm" style="color:${r.pend>0.001?'var(--warn)':'var(--good)'}">${fmtCur(r.pend,r.moneda)}</td><td><button class="pg" data-det="${rol}|${r.id}|${r.moneda}">ver ventas</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty" style="padding:24px">Sin comisiones en este lanzamiento.</div>`}
-  document.getElementById('setTbl').innerHTML=tbl(setAgg,'setter')
-  document.getElementById('cloTbl').innerHTML=tbl(cloAgg,'closer')
-  document.getElementById('dirTbl').innerHTML=tbl(dirAgg,'director')
-  document.querySelectorAll('[data-det]').forEach(b=>b.onclick=()=>{const parts=b.dataset.det.split('|');openComDetalle(parts[0],parts[1],parts[2])})}
-async function openComDetalle(rol,personaId,moneda){
-  const p=state.setters.find(x=>x.id===personaId),nombre=(p&&p.nombre)||'—'
-  const mine=COM_LINES.filter(l=>l.rol===rol&&l.personaId===personaId&&l.moneda===moneda&&l.monto>0.005)
-  const ov=document.createElement('div');ov.className='overlay';let changed=false
-  let{data:manuals}=await sb.from('pagos_manuales').select('*').eq('persona_id',personaId).eq('rol',rol).eq('moneda',moneda).order('pagado_at',{ascending:false})
-  manuals=manuals||[]
-  const keyOf=l=>l.tipo+':'+l.id+':'+l.rol
-  const groups=()=>{const g={},ord=[];mine.forEach((l,i)=>{const k=String(l.ventaId);if(!g[k]){g[k]={label:l.label,items:[]};ord.push(k)}g[k].items.push({l,i})});return{g,ord}}
-  const body=()=>{const{g,ord}=groups();if(!ord.length)return ''
-    return ord.map(k=>{const grp=g[k],sub=grp.items.reduce((a,x)=>a+x.l.monto,0),pag=grp.items.reduce((a,x)=>a+(COM_PAID.has(keyOf(x.l))?x.l.monto:0),0)
-      const est=pag>=sub-0.001?'<span class="chip cobrado">pagada</span>':pag>0?'<span class="chip potencial">parcial</span>':'<span class="chip pendiente">pendiente</span>'
-      const head=`<tr><td class="nm">${esc(grp.label)}</td><td></td><td></td><td class="nm">${fmtCur(sub,moneda)}</td><td>${est}</td>${isMgr()?`<td><button class="pg" data-togv="${k}">${pag>=sub-0.001?'desmarcar':'pagar venta'}</button></td>`:''}</tr>`
-      const rows=grp.items.map(({l,i})=>{const pd=COM_PAID.has(keyOf(l))
-        return `<tr><td class="sub2" style="padding-left:22px">↳ ${l.tipo==='sena'?'seña':l.tipo==='venta'?'facturación':'cuota'}</td><td class="sub2">${fmtCur(l.base,moneda)}</td><td class="sub2">${l.pct}%</td><td>${fmtCur(l.monto,moneda)}</td><td>${pd?'<span class="chip cobrado">pagada</span>':'<span class="chip pendiente">pend.</span>'}</td>${isMgr()?`<td><button class="pg" data-tog="${i}">${pd?'quitar':'pagar'}</button></td>`:''}</tr>`}).join('')
-      return head+rows}).join('')}
-  const manualTotal=()=>manuals.reduce((a,m)=>a+Number(m.monto_usd||0),0)
-  const totals=()=>{const dev=mine.reduce((a,l)=>a+l.monto,0),pag=mine.reduce((a,l)=>a+(COM_PAID.has(keyOf(l))?l.monto:0),0)+manualTotal();return{dev,pag}}
-  const manualBody=()=>manuals.length?manuals.map(m=>`<tr><td class="sub2">${fmtDate(m.pagado_at)}</td><td class="nm">${fmtCur(Number(m.monto_usd||0),moneda)}</td><td class="sub2">${esc(m.nota||'')}</td>${isMgr()?`<td><button class="pg" data-delman="${m.id}">quitar</button></td>`:''}</tr>`).join(''):`<tr><td colspan="4" class="empty">Sin pagos manuales todavía.</td></tr>`
-  const draw=()=>{const t=totals();ov.querySelector('#cd_sum').textContent=`Comisión total ${fmtCur(t.dev,moneda)} · Pagado ${fmtCur(t.pag,moneda)} · Pendiente ${fmtCur(t.dev-t.pag,moneda)}`;ov.querySelector('#cd_body').innerHTML=body()||`<tr><td colspan="6" class="empty">Sin ventas con comisión todavía.</td></tr>`
-    const mb=ov.querySelector('#cd_manbody');if(mb)mb.innerHTML=manualBody();wire()}
-  const setPaid=async(l,val)=>{const m={origen_tipo:l.tipo,origen_id:l.id,rol:l.rol}
-    if(val){const{error}=await sb.from('comision_pagos').upsert({...m,persona_id:l.personaId,lanzamiento_id:l.lanzId||null,monto_usd:l.monto,pagado_by:me.id,pagado_at:new Date().toISOString()},{onConflict:'origen_tipo,origen_id,rol'});if(error){toast('Error: '+error.message);return}COM_PAID.add(keyOf(l))}
-    else{const{error}=await sb.from('comision_pagos').delete().match(m);if(error){toast('Error: '+error.message);return}COM_PAID.delete(keyOf(l))}
-    changed=true}
-  const addManual=async()=>{const inp=ov.querySelector('#cd_manmonto'),nota=ov.querySelector('#cd_mannota'),monto=Number(inp.value)
-    if(!(monto>0)){toast('Poné un monto mayor a 0');return}
-    const{data,error}=await sb.from('pagos_manuales').insert({persona_id:personaId,rol,moneda,monto_usd:monto,nota:nota.value.trim()||null,pagado_by:me.id}).select().single()
-    if(error){toast('Error: '+error.message);return}
-    manuals.unshift(data);inp.value='';nota.value='';changed=true;draw();toast('Pago registrado ✓')}
-  const delManual=async(id)=>{if(!confirm('¿Quitar este pago?'))return
-    const{error}=await sb.from('pagos_manuales').delete().eq('id',id);if(error){toast('Error: '+error.message);return}
-    manuals=manuals.filter(m=>m.id!==id);changed=true;draw()}
-  function wire(){
-    ov.querySelectorAll('[data-tog]').forEach(b=>b.onclick=async()=>{const l=mine[Number(b.dataset.tog)];await setPaid(l,!COM_PAID.has(keyOf(l)));draw()})
-    ov.querySelectorAll('[data-togv]').forEach(b=>b.onclick=async()=>{const grp=mine.filter(l=>String(l.ventaId)===b.dataset.togv),allPaid=grp.every(l=>COM_PAID.has(keyOf(l)));for(const l of grp)await setPaid(l,!allPaid);draw()})
-    ov.querySelectorAll('[data-delman]').forEach(b=>b.onclick=()=>delManual(b.dataset.delman))
-    const ab2=ov.querySelector('#cd_manadd');if(ab2)ab2.onclick=addManual}
-  ov.innerHTML=`<div class="modal" style="max-width:720px"><h2>${esc(nombre)} · comisión ${rol} · ${moneda}</h2>
-    <p class="cdesc" id="cd_sum"></p>
-    ${isMgr()?'<div class="actions" style="margin:0 0 12px"><button class="btn ghost" id="cd_all">Marcar todo pagado</button></div>':''}
-    <div class="tablewrap" style="margin:0"><table><thead><tr><th>Venta / origen</th><th>Base</th><th>%</th><th>Comisión</th><th>Estado</th>${isMgr()?'<th></th>':''}</tr></thead><tbody id="cd_body"></tbody></table></div>
-    <h3 style="margin-top:22px">Pagos manuales</h3><p class="cdesc">Cargá un monto suelto en ${moneda} (parcial o total) y se resta directo del pendiente — sin marcar líneas.</p>
-    ${isMgr()?`<div class="row3"><div class="field"><label>Monto (${moneda})</label><input class="inp" id="cd_manmonto" type="number" step="0.01" placeholder="150"/></div><div class="field"><label>Nota</label><input class="inp" id="cd_mannota" placeholder="opcional"/></div><div class="field" style="display:flex;align-items:flex-end"><button class="btn primary" id="cd_manadd" style="width:100%">Registrar pago</button></div></div>`:''}
-    <div class="tablewrap" style="margin:12px 0 0"><table><thead><tr><th>Fecha</th><th>Monto</th><th>Nota</th>${isMgr()?'<th></th>':''}</tr></thead><tbody id="cd_manbody"></tbody></table></div>
-    <div class="actions"><div class="grow"></div><button class="btn primary" id="cd_close">Cerrar</button></div></div>`
-  document.body.appendChild(ov);draw()
-  if(isMgr()){const ab=ov.querySelector('#cd_all');if(ab)ab.onclick=async()=>{for(const l of mine){if(!COM_PAID.has(keyOf(l)))await setPaid(l,true)}draw();toast('Marcadas ✓')}}
-  const close=()=>{ov.remove();if(changed)renderComisiones()}
-  ov.onclick=e=>{if(e.target===ov)close()};ov.querySelector('#cd_close').onclick=close}
-async function renderComResumen(){const el=document.getElementById('comResumen');if(!el)return
-  // Cada moneda se trackea por separado, sin conversión.
-  const{data:lanzs}=await sb.from('lanzamientos').select('id,numero,nombre')
-  const lmap={};(lanzs||[]).forEach(l=>lmap[l.id]=l)
-  const{data:ventas}=await sb.from('ventas').select('id,lanzamiento_id,canal,setter_id,closer_id,com_setter_pct,com_closer_pct,moneda,base_comisionable,ticket,equipo').limit(10000)
-  const vmap={};(ventas||[]).forEach(v=>vmap[v.id]=v)
-  const{data:cuotas}=await sb.from('cuotas').select('id,monto,venta_id').eq('estado','cobrado').limit(10000)
-  const{data:senas}=await sb.from('senas').select('id,monto,venta_id').eq('estado','aplicada').limit(10000)
-  const{data:pagos}=await sb.from('comision_pagos').select('origen_tipo,origen_id,rol').limit(20000)
-  const paid=new Set((pagos||[]).map(p=>p.origen_tipo+':'+p.origen_id+':'+p.rol))
-  const bucketOf=v=>(v.canal&&v.canal!=='lanzamiento')?v.canal:(v.lanzamiento_id||'sin')
-  const B={},add=(tipo,id,comBase,v)=>{const mon=v.moneda||'USD',b=bucketOf(v)+'|'+mon,o=B[b]=B[b]||{gan:0,pag:0,bucket:bucketOf(v),moneda:mon}
-    ;['setter','closer'].forEach(rol=>{const pid=rol==='setter'?v.setter_id:v.closer_id;if(!pid)return;const pct=Number(rol==='setter'?v.com_setter_pct:v.com_closer_pct)||0,com=comBase*pct/100;if(com<=0.005)return;o.gan+=com;if(paid.has(tipo+':'+id+':'+rol))o.pag+=com})}
-  const conCobro=new Set(),byV={}
-  ;(cuotas||[]).forEach(c=>{const v=vmap[c.venta_id];if(!v)return;conCobro.add(c.venta_id);(byV[c.venta_id]=byV[c.venta_id]||[]).push({tipo:'cuota',id:c.id,monto:Number(c.monto||0)})})
-  ;(senas||[]).forEach(s=>{const v=vmap[s.venta_id];if(!v||!conCobro.has(s.venta_id))return;(byV[s.venta_id]=byV[s.venta_id]||[]).push({tipo:'sena',id:s.id,monto:Number(s.monto||0)})})
-  Object.keys(byV).forEach(vid=>{const v=vmap[vid],cap=(v.base_comisionable!=null&&Number(v.base_comisionable)>0)?Number(v.base_comisionable):Infinity;let cum=0
-    byV[vid].forEach(ev=>{const prev=Math.min(cum,cap);cum+=ev.monto;const now=Math.min(cum,cap);add(ev.tipo,ev.id,Math.max(0,now-prev),v)})})
-  // director: facturación completa (ticket) de su equipo, sin topes
-  ;(ventas||[]).forEach(v=>{const dir=directorDe(v.equipo);if(!dir||!(Number(dir.com_director_pct)>0))return
-    const mon=v.moneda||'USD',b=bucketOf(v)+'|'+mon,o=B[b]=B[b]||{gan:0,pag:0,bucket:bucketOf(v),moneda:mon},base=Number(v.ticket||0),com=base*Number(dir.com_director_pct)/100
-    if(com<=0.005)return;o.gan+=com;if(paid.has('venta:'+v.id+':director'))o.pag+=com})
-  const label=b=>b==='funnel'?'Funnel':b==='referido'?'Referidos':b==='sin'?'Sin lanzamiento':(lmap[b]?lanzLabel(lmap[b]):'Lanzamiento')
-  const keys=Object.keys(B).sort((a,b)=>(B[b].gan-B[b].pag)-(B[a].gan-B[a].pag))
-  el.innerHTML=`<div class="card" style="margin:0 30px 20px"><h3>A pagar por origen</h3><p class="cdesc">Comisiones por lanzamiento / funnel / referidos, separadas por moneda. Tocá una fila para filtrar abajo.</p>
-    <div class="tablewrap" style="margin:0"><table><thead><tr><th>Origen</th><th>Moneda</th><th>Ganado</th><th>Pagado</th><th>Pendiente</th></tr></thead><tbody>${keys.length?keys.map(k=>{const b=B[k];return`<tr class="clk" data-src="${b.bucket==='funnel'||b.bucket==='referido'?b.bucket:(b.bucket==='sin'?'all':b.bucket)}"><td class="nm">${esc(label(b.bucket))}</td><td class="sub2">${b.moneda}</td><td>${fmtCur(b.gan,b.moneda)}</td><td>${fmtCur(b.pag,b.moneda)}</td><td class="nm" style="color:${(b.gan-b.pag)>0.005?'var(--warn)':'var(--good)'}">${fmtCur(b.gan-b.pag,b.moneda)}</td></tr>`}).join(''):'<tr><td colspan="5" class="empty">Sin comisiones todavía.</td></tr>'}</tbody></table></div></div>`
-  el.querySelectorAll('tr[data-src]').forEach(tr=>tr.onclick=()=>{comLanzFilter=tr.dataset.src;renderComisiones()})}
+/* ================= LANZAMIENTOS (manager) ================= */
 async function openLanzModal(){
   const{data:lanzs}=await sb.from('lanzamientos').select('*').order('numero',{ascending:true,nullsFirst:false}).order('created_at')
   const ov=document.createElement('div');ov.className='overlay'
@@ -1217,90 +315,23 @@ async function openLanzModal(){
     if(state.lanz&&state.lanz.id===b.dataset.save){state.lanz.numero=num!==''?Number(num):null;state.lanz.nombre=nom};toast('Guardado ✓')})
   ov.querySelectorAll('[data-act]').forEach(b=>b.onclick=async()=>{await sb.from('lanzamientos').update({activo:false}).eq('activo',true)
     const{data,error}=await sb.from('lanzamientos').update({activo:true}).eq('id',b.dataset.act).select().single();if(error){toast('Error: '+error.message);return}
-    state.lanz=data;comLanzFilter=data.id;toast('Lanzamiento activado ✓');ov.remove();renderComisiones()})
+    state.lanz=data;toast('Lanzamiento activado ✓');ov.remove();renderEquipo()})
   ov.querySelector('#l_add').onclick=async()=>{const num=document.getElementById('l_num').value,nom=document.getElementById('l_nom').value.trim()||('Lanzamiento '+(num||''))
     await sb.from('lanzamientos').update({activo:false}).eq('activo',true)
     const{data,error}=await sb.from('lanzamientos').insert({numero:num!==''?Number(num):null,nombre:nom,activo:true}).select().single();if(error){toast('Error: '+error.message);return}
-    state.lanz=data;comLanzFilter=data.id;toast('Lanzamiento creado ✓');ov.remove();renderComisiones()}}
-async function renderComConfig(){const{data:profs}=await sb.from('profiles').select('id,nombre,rol,equipo,com_setter_pct,com_closer_pct,com_director_pct').eq('activo',true).order('rol')
+    state.lanz=data;toast('Lanzamiento creado ✓');ov.remove();renderEquipo()}}
+
+/* ================= EQUIPO (manager: roles + lanzamientos) ================= */
+async function renderEquipo(){
+  view().innerHTML=head('MANAGER','Equipo',`<button class="btn ghost" id="eq_lanz">Lanzamientos</button>`)+`<div class="card"><h3>Roles</h3><p class="cdesc">El rol de cada persona define qué ve en el menú (setter ve KPIs, closer no; Contexto de leads y Strikes los ven todos). Asignale el suyo a quien se registre nuevo.</p><div id="eq_rows"><div class="empty" style="padding:24px">Cargando…</div></div></div>`
+  document.getElementById('eq_lanz').onclick=openLanzModal
+  loadEquipo()}
+async function loadEquipo(){const{data:profs}=await sb.from('profiles').select('id,nombre,rol').eq('activo',true).order('rol')
   const ROLES=['setter','closer','director','manager','admin']
-  document.getElementById('cfgWrap').innerHTML=`<div class="card"><h3>Equipo · roles y comisiones</h3><p class="cdesc">Rol, equipo y % de cada persona. El director comisiona sobre la facturación de su equipo (sin topes). Los % se aplican a las próximas ventas.</p>
-    <div class="tablewrap" style="margin:0"><table><thead><tr><th>Persona</th><th>Rol</th><th>Equipo</th><th>% setter</th><th>% closer</th><th>% director</th><th></th></tr></thead><tbody>${(profs||[]).map(p=>`<tr data-p="${p.id}"><td class="nm">${esc(p.nombre)}</td><td><select class="rol">${ROLES.map(r=>`<option ${p.rol===r?'selected':''}>${r}</option>`).join('')}</select></td><td><select class="eq">${EQUIPOS.map(e=>`<option value="${e[0]}" ${(p.equipo||'')===e[0]?'selected':''}>${e[1]}</option>`).join('')}</select></td><td><input class="inp cs" type="number" step="0.5" value="${p.com_setter_pct||0}" style="max-width:90px"/></td><td><input class="inp cc" type="number" step="0.5" value="${p.com_closer_pct||0}" style="max-width:90px"/></td><td><input class="inp cd" type="number" step="0.5" value="${p.com_director_pct||0}" style="max-width:90px"/></td><td><button class="pg" data-save="${p.id}">Guardar</button></td></tr>`).join('')}</tbody></table></div></div>`
-  document.querySelectorAll('[data-save]').forEach(b=>b.onclick=async()=>{const tr=b.closest('tr'),rol=tr.querySelector('.rol').value,equipo=tr.querySelector('.eq').value||null,cs=Number(tr.querySelector('.cs').value||0),cc=Number(tr.querySelector('.cc').value||0),cd=Number(tr.querySelector('.cd').value||0)
-    const{error}=await sb.from('profiles').update({rol,equipo,com_setter_pct:cs,com_closer_pct:cc,com_director_pct:cd}).eq('id',b.dataset.save);if(error){toast('Error: '+error.message);return}
-    const s=state.setters.find(x=>x.id===b.dataset.save);if(s){s.rol=rol;s.equipo=equipo;s.com_setter_pct=cs;s.com_closer_pct=cc;s.com_director_pct=cd};toast('Guardado ✓')})}
-
-/* ================= CALENDARIO ================= */
-async function renderCalendario(){view().innerHTML=head('AGENDA','Calendario')+`<div class="card"><div class="agenda" id="ag"></div></div>`
-  const{data:clases}=await sb.from('clases').select('*').eq('lanzamiento_id',state.lanz.id).order('fecha')
-  let sq=sb.from('seguimientos').select('*,leads(nombre)').eq('hecho',false).order('fecha_programada')
-  if(!isMgr())sq=myProfile.rol==='closer'?sq.eq('closer_id',me.id):sq.eq('asesor_id',me.id)
-  const{data:segs}=await sq
-  const items=[]
-  ;(clases||[]).forEach(c=>c.fecha&&items.push({d:c.fecha.slice(0,10),tg:'CLASE',t:'Clase '+c.numero+(c.titulo?' — '+c.titulo:'')}))
-  ;(segs||[]).forEach(s=>s.fecha_programada&&items.push({d:s.fecha_programada,tg:'SEGUIMIENTO',t:(s.leads?s.leads.nombre:'Lead')+' — '+(s.nota||s.tipo||'')}))
-  items.sort((a,b)=>a.d.localeCompare(b.d))
-  const byDay={};items.forEach(i=>{(byDay[i.d]=byDay[i.d]||[]).push(i)})
-  const days=Object.keys(byDay)
-  document.getElementById('ag').innerHTML=days.length?days.map(d=>`<div class="day">${new Date(d+'T00:00').toLocaleDateString('es',{weekday:'long',day:'2-digit',month:'long'})}</div>${byDay[d].map(i=>`<div class="ev"><span class="tg">${i.tg}</span><span>${esc(i.t)}</span></div>`).join('')}`).join(''):`<div class="empty">No hay clases ni seguimientos agendados.</div>`}
-
-/* ================= TODAS LAS AGENDAS (manager) ================= */
-// Parte de "leads" (no de "seguimientos"): así aparecen TODOS los leads en
-// etapa de agenda del lanzamiento activo, incluso si por algún bug les falta
-// el seguimiento con el setter/closer bien cargado (ese caso se ve como
-// "sin asesor"/"sin closer" en la fila, en vez de desaparecer directamente).
-// Situación = closed/no-closed según leads.estado — 'Cerrado' es lo único
-// que saveVenta() marca como cerrado en todo el CRM.
-let agFiltroSetter='',agFiltroCloser='',agFiltroSituacion=''
-async function renderAgendas(){
-  view().innerHTML=head('MANAGER','Todas las agendas')+`<div class="card">
-    <p class="cdesc">Todos los leads en etapa de agenda del lanzamiento activo${state.lanz?' ('+esc(state.lanz.nombre)+')':''} — tomadas y por tomar, cerradas y no cerradas.</p>
-    <div class="tb">
-      <select class="pill" id="ag_f_setter"><option value="">Todos los setters</option>${state.setters.filter(s=>s.rol==='setter').map(s=>`<option value="${s.id}" ${agFiltroSetter===s.id?'selected':''}>${esc(s.nombre)}</option>`).join('')}</select>
-      <select class="pill" id="ag_f_closer"><option value="">Todos los closers</option>${state.setters.filter(s=>s.rol==='closer').map(s=>`<option value="${s.id}" ${agFiltroCloser===s.id?'selected':''}>${esc(s.nombre)}</option>`).join('')}</select>
-      <select class="pill" id="ag_f_sit"><option value="">Todas las situaciones</option><option value="cerrada" ${agFiltroSituacion==='cerrada'?'selected':''}>Cerradas</option><option value="nocerrada" ${agFiltroSituacion==='nocerrada'?'selected':''}>No cerradas</option></select>
-    </div>
-    <div class="tablewrap"><table><thead><tr><th>Lead</th><th>Teléfono</th><th>Situación</th><th>Fecha agenda</th><th>Setter</th><th>Closer</th><th>Actualizado</th><th></th></tr></thead><tbody id="ag_rows"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table></div></div>`
-  document.getElementById('ag_f_setter').onchange=e=>{agFiltroSetter=e.target.value;loadAgendasAdmin()}
-  document.getElementById('ag_f_closer').onchange=e=>{agFiltroCloser=e.target.value;loadAgendasAdmin()}
-  document.getElementById('ag_f_sit').onchange=e=>{agFiltroSituacion=e.target.value;loadAgendasAdmin()}
-  loadAgendasAdmin()}
-async function loadAgendasAdmin(){
-  const rows=document.getElementById('ag_rows');if(!rows)return
-  // 1) Cada seguimiento tipo "agenda" del lanzamiento activo es una fila —
-  //    a propósito NO se agrupa por lead: si alguien tiene 2 reprogramaciones
-  //    son 2 agendas reales, y agrupar es justo lo que las venía escondiendo.
-  let sq=sb.from('seguimientos').select('id,lead_id,asesor_id,closer_id,fecha_programada,created_at,leads!inner(nombre,telefono,estado,lanzamiento_id,updated_at)').eq('tipo','agenda').limit(3000)
-  if(state.lanz)sq=sq.eq('leads.lanzamiento_id',state.lanz.id)
-  const{data:segs,error:e1}=await sq
-  if(e1){rows.innerHTML=`<tr><td colspan="8" class="empty">Error: ${esc(e1.message)}</td></tr>`;return}
-  const filasSeg=(segs||[]).map(s=>({segId:s.id,leadId:s.lead_id,nombre:s.leads.nombre,telefono:s.leads.telefono,estado:s.leads.estado,fecha:s.fecha_programada,asesor_id:s.asesor_id,closer_id:s.closer_id,orden:s.fecha_programada||s.created_at}))
-  // 2) Leads en etapa de agenda que no tengan NINGÚN seguimiento tipo "agenda"
-  //    (el bug de origen: quedan con estado "Agendó" pero sin ese registro).
-  let lq=sb.from('leads').select('id,nombre,telefono,estado,updated_at,asesor_id').in('estado',['Agendó','Confirmó clase','Asistió','Cerrado']).limit(2000)
-  if(state.lanz)lq=lq.eq('lanzamiento_id',state.lanz.id)
-  const{data:candidatos,error:e2}=await lq
-  if(e2){rows.innerHTML=`<tr><td colspan="8" class="empty">Error: ${esc(e2.message)}</td></tr>`;return}
-  // OJO: no alcanza con "el lead ya tiene algún seguimiento" — puede tener uno
-  // con OTRO asesor (mal cargado) y el actual leads.asesor_id no estar reflejado
-  // ahí. Por eso comparamos contra el asesor puntual del lead, no contra "tiene
-  // seguimiento sí/no" en general.
-  const asesoresPorLead={}
-  filasSeg.forEach(f=>{(asesoresPorLead[f.leadId]=asesoresPorLead[f.leadId]||new Set()).add(f.asesor_id)})
-  const filasSinSeg=(candidatos||[]).filter(l=>{const vistos=asesoresPorLead[l.id];return!vistos||!vistos.has(l.asesor_id)}).map(l=>({leadId:l.id,nombre:l.nombre,telefono:l.telefono,estado:l.estado,fecha:null,asesor_id:l.asesor_id,closer_id:null,orden:l.updated_at}))
-  let filas=[...filasSeg,...filasSinSeg]
-  if(agFiltroSituacion==='cerrada')filas=filas.filter(f=>f.estado==='Cerrado')
-  else if(agFiltroSituacion==='nocerrada')filas=filas.filter(f=>f.estado!=='Cerrado')
-  if(agFiltroSetter)filas=filas.filter(f=>f.asesor_id===agFiltroSetter)
-  if(agFiltroCloser)filas=filas.filter(f=>f.closer_id===agFiltroCloser)
-  filas.sort((a,b)=>(b.orden||'').localeCompare(a.orden||''))
-  rows.innerHTML=filas.length?filas.map(f=>{const cerrada=f.estado==='Cerrado'
-    return `<tr><td class="nm">${esc(f.nombre)}</td><td class="sub2">${esc(f.telefono||'—')}</td><td><span class="chip ${cerrada?'cobrado':'pendiente'}">${cerrada?'Cerrada':'No cerrada'}</span></td><td class="sub2">${esc(f.fecha||'—')}</td><td class="sub2">${esc(nameOf(f.asesor_id)||'sin asesor')}</td><td class="sub2">${esc(nameOf(f.closer_id)||'sin closer')}</td><td class="sub2">${fmtDateTime(f.orden)}</td><td>${f.segId?`<button class="pg" data-borrar-ag="${f.segId}">Borrar</button>`:'—'}</td></tr>`}).join(''):`<tr><td colspan="8" class="empty">Sin agendas para este filtro.</td></tr>`
-  document.querySelectorAll('[data-borrar-ag]').forEach(b=>b.onclick=async()=>{
-    if(!confirm('¿Borrar esta agenda? Solo elimina el registro de la agenda, no el lead.'))return
-    const{error}=await sb.from('seguimientos').delete().eq('id',b.dataset.borrarAg)
-    if(error){toast('Error: '+error.message);return}
-    toast('Agenda borrada ✓');loadAgendasAdmin()})}
+  document.getElementById('eq_rows').innerHTML=`<div class="tablewrap" style="margin:0"><table><thead><tr><th>Persona</th><th>Rol</th><th></th></tr></thead><tbody>${(profs||[]).map(p=>`<tr data-p="${p.id}"><td class="nm">${esc(p.nombre)}</td><td><select class="rol">${ROLES.map(r=>`<option ${p.rol===r?'selected':''}>${r}</option>`).join('')}</select></td><td><button class="pg" data-save="${p.id}">Guardar</button></td></tr>`).join('')}</tbody></table></div>`
+  document.querySelectorAll('[data-save]').forEach(b=>b.onclick=async()=>{const tr=b.closest('tr'),rol=tr.querySelector('.rol').value
+    const{error}=await sb.from('profiles').update({rol}).eq('id',b.dataset.save);if(error){toast('Error: '+error.message);return}
+    const s=state.setters.find(x=>x.id===b.dataset.save);if(s)s.rol=rol;toast('Guardado ✓')})}
 
 /* ================= STRIKES ================= */
 async function renderStrikes(){const canLog=isMgr()||myProfile.rol==='director'
@@ -1318,13 +349,10 @@ async function renderStrikes(){const canLog=isMgr()||myProfile.rol==='director'
           <span class="falta-tag">⚠ Advertencia · falta leve</span>
           <h4>Ejemplos</h4>
           <ul>
-            <li>No cargar el reporte de la llamada el mismo día.</li>
             <li>No completar los KPIs, o cargarlos incompletos.</li>
             <li>Llegar tarde a una call agendada sin avisar antes.</li>
             <li>No presentarse a las reuniones dailys.</li>
-            <li>No cargar las agendas en el día.</li>
-            <li>Cargar una venta sin subir el comprobante.</li>
-            <li>Cargar mal una seña (monto, moneda o venta asociada equivocada).</li>
+            <li>No completar el contexto de un lead que te corresponde en "Contexto de leads".</li>
           </ul>
         </div>
         <div class="falta-card grave">
@@ -1332,10 +360,8 @@ async function renderStrikes(){const canLog=isMgr()||myProfile.rol==='director'
           <h4>Ejemplos</h4>
           <ul>
             <li>No presentarse a una call agendada sin avisar (no-show propio).</li>
-            <li>Cargar un reporte o un ticket con datos falsos o inflados.</li>
             <li>Maltratar a un lead o faltar el respeto en una llamada.</li>
-            <li>Ocultar o demorar a propósito un comprobante de pago real.</li>
-            <li>Cobrarle mal a un lead, ya sea el monto o el medio de pago.</li>
+            <li>Cargar datos falsos o inflados en los KPIs.</li>
             <li>No aplicar las estrategias del lanzamiento bajadas por los directores.</li>
           </ul>
         </div>
@@ -1415,62 +441,27 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
   <p class="lead2">Cómo usar el CRM paso a paso, según tu rol. Si es tu primera vez, empezá por <b style="color:var(--ink)">Arrancar</b> y después andá a la sección de tu rol.</p>
   <div class="toc">
     <a onclick="document.getElementById('g_arr').scrollIntoView({behavior:'smooth'})">Arrancar</a>
-    <a onclick="document.getElementById('g_set').scrollIntoView({behavior:'smooth'})">Setter</a>
-    <a onclick="document.getElementById('g_clo').scrollIntoView({behavior:'smooth'})">Closer</a>
-    <a onclick="document.getElementById('g_cob').scrollIntoView({behavior:'smooth'})">Ventas / Cobros</a>
+    <a onclick="document.getElementById('g_kpi').scrollIntoView({behavior:'smooth'})">KPIs</a>
     <a onclick="document.getElementById('g_str').scrollIntoView({behavior:'smooth'})">Strikes</a>
     <a onclick="document.getElementById('g_ctx').scrollIntoView({behavior:'smooth'})">Contexto de leads</a>
     <a onclick="document.getElementById('g_man').scrollIntoView({behavior:'smooth'})">Manager</a>
-    <a onclick="document.getElementById('g_flu').scrollIntoView({behavior:'smooth'})">Flujos</a>
     <a onclick="document.getElementById('g_glo').scrollIntoView({behavior:'smooth'})">Glosario</a>
   </div>
 
   <h2 id="g_arr">1 · Arrancar (todos)</h2>
   <div class="gcard"><ol class="steps">
     <li><b>Entrá al link del CRM</b> y creá tu cuenta con tu email.<div class="d">Primera vez: "Crear una" → email + contraseña + tu nombre.</div></li>
-    <li><b>Avisá al manager</b> que te registraste, para que te asigne tu <b>rol</b>.</li>
-    <li><b>Menú izquierdo</b> = secciones. Se filtra según tu rol: cada uno ve las pantallas de carga que le corresponden (setter no ve Triage, closer no ve KPIs, etc.), pero <b>Ventas, Señas, Cuotas, Facturación, Comisiones y Strikes se ven completos para todo el equipo</b> — la plata y el estado del equipo no se esconden.</li>
-    <li><b>Arriba a la derecha</b> están los botones de acción (ej: + Nuevo lead).</li>
+    <li><b>Avisá al manager</b> que te registraste, para que te asigne tu <b>rol</b> en Equipo.</li>
+    <li><b>Menú izquierdo</b> = secciones. KPIs es solo para setters; <b>Contexto de leads y Strikes los ve todo el equipo</b>; Equipo es manager-only.</li>
   </ol>
-  <div class="note">Regla de oro: <b>cargá todo en el momento</b> (lead, llamada, venta, cobro). El CRM sirve solo si los datos están al día.</div></div>
+  <div class="note">El CRM hoy es chico a propósito: solo <b>KPIs</b>, <b>Contexto de leads</b> y <b>Strikes</b>. Ya no se trackean agendas ni se cargan ventas acá.</div></div>
 
-  <h2 id="g_set">Rol Setter</h2>
-  <div class="gcard role setter"><span class="tag setter">Setter</span><h3>Tu día en el CRM</h3>
-  <p class="lead2">Cargar leads, contactarlos, hacerlos avanzar y agendar la llamada con el closer.</p>
+  <h2 id="g_kpi">KPIs (setter)</h2>
+  <div class="gcard role setter"><span class="tag setter">Setter</span><h3>Tus números, al día</h3>
   <ol class="steps">
-    <li><b>Panel general</b> → "Seguimientos de hoy": tu cola del día.</li>
-    <li><b>Leads → + Nuevo lead</b>: nombre, teléfono, email, fuente y temperatura.</li>
-    <li><b>Cargar agenda</b>: cuando un lead agenda llamada, cargá nombre, teléfono, email, fuente (Lanzamiento / Funnel / Referido) y temperatura, junto con la fecha de la agenda — queda reflejado en el Calendario.</li>
-    <li>En la misma <b>Cargar agenda</b>, completá el bloque <b>"Contexto para el closer"</b>: situación actual, objetivos y dolores — es el mini reporte que el closer va a ver en Triage antes de la llamada.</li>
-    <li><b>Mis agendas</b>: lista aparte con las agendas que tenés asignadas — incluye las tuyas y las que un closer cargó porque el lead se agendó solo (sin que vos le hayas escrito antes). Cada una muestra un cartel <b>"sin contexto"</b> o <b>"con contexto"</b>; entrá a las que digan "sin contexto" y completá Situación/Objetivos/Dolores apenas puedas.</li>
-    <li>Abrí el lead y <b>cambiá el Estado</b> a medida que avanza.</li>
-    <li>Cargá un <b>próximo seguimiento</b> (fecha + nota) dentro del lead.</li>
-    <li><b>KPIs</b> → cargá: sin responder, leves, fluidos, potenciales y agendas. Es un solo registro tuyo: cada vez que guardás, pisa tu último número (no se suma a lo anterior) — si cargaste 1 hoy y mañana cargás 2, queda en 2, no en 3.</li>
-  </ol>
-  <div class="flow"><span class="st">Nuevo</span><span class="ar">→</span><span class="st">Contactado</span><span class="ar">→</span><span class="st">Confirmó clase</span><span class="ar">→</span><span class="st">Asistió</span><span class="ar">→</span><span class="st">Agendó</span></div></div>
-
-  <h2 id="g_clo">Rol Closer</h2>
-  <div class="gcard role closer"><span class="tag closer">Closer</span><h3>Tu día en el CRM</h3>
-  <p class="lead2">Preparar la llamada, tomarla y cargar el resultado (y la venta si cerró).</p>
-  <ol class="steps">
-    <li><b>Triage</b> → leads que agendaron y hay que calificar antes de la call. Abrí el lead para ver el <b>contexto que cargó el setter</b> (situación, objetivos, dolores) antes de entrar a la llamada.</li>
-    <li><b>Cargar agenda</b>: si un lead se agendó solo (nadie le escribió antes), cargalo igual desde acá aunque no tengas contexto — dejá esos campos vacíos. Si sabés qué setter venía trabajando a esa persona, asignáselo en <b>Asesor</b> para que le aparezca en su lista de "Mis agendas" y lo pueda completar después.</li>
-    <li><b>Reporte de llamadas</b> → elegí el lead, si se presentó y el Resultado (Cerró / Seguimiento / No cierre).</li>
-    <li>Completá <b>situación, dolores, razones de compra, objeciones y frases clave</b>.</li>
-    <li><b>Si cerró:</b> completá el bloque <b>Venta</b> (ticket, pagó, cuotas, comprobante, setter y closer).</li>
-    <li>Si no cerró: cargá <b>motivo</b> y <b>próximo seguimiento</b>.</li>
-    <li><b>Grilla de reportes</b>: historial de todas tus llamadas cargadas, con resultado y facturado.</li>
-  </ol>
-  <div class="note">El <b>closer</b> y el <b>setter</b> que elijas en la venta definen a quién le corresponde la <b>comisión</b>.</div></div>
-
-  <h2 id="g_cob">Ventas, Señas y Cobros</h2>
-  <div class="gcard role cobros"><span class="tag cobros">Ventas / Cobros</span><h3>Cargar plata y seguirla</h3>
-  <ol class="steps">
-    <li><b>Ventas → + Cargar venta</b>: venta directa. Elegí el <b>Canal</b> (Lanzamiento / Funnel / Referido) para no mezclar y la <b>Moneda</b> (USD / ARS / EUR) — cada moneda se trackea por separado, sin convertir a dólares ni sumarse con otra.</li>
-    <li><b>Señas → + Registrar seña</b>: reserva del cliente. No cuenta hasta que la venta pague su 1ª cuota.</li>
-    <li><b>Cobros → Cuotas</b>: cuando entra una cuota, tocá <b>"Marcar cobrada"</b>.</li>
-    <li><b>Facturación</b>: facturación y cash <b>por moneda</b> (un bloque separado por cada una) y cash por billetera. No hay un total mezclado entre monedas.</li>
-    <li>Ventas, Señas, Cuotas, Reportes de llamada y KPIs muestran una columna <b>"Cargado"</b> con la fecha y hora exacta en que se guardó el registro — es automática, nadie la carga a mano.</li>
+    <li><b>KPIs</b> → cargá: sin responder, leves, fluidos, potenciales y agendas.</li>
+    <li>Es un <b>solo registro tuyo</b>: cada vez que guardás, pisa tu último número (no se suma a lo anterior) — si cargaste 1 hoy y mañana cargás 2, queda en 2, no en 3.</li>
+    <li>El manager ve el historial de todos ordenado por carga, con una alerta si a alguien le suma más en KPIs que leads reales tiene asignados — ahí hay un número mal tipeado, no un bug.</li>
   </ol></div>
 
   <h2 id="g_str">Strikes</h2>
@@ -1481,7 +472,7 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
     <li>Escalada de comisión: <b>3 strikes → −5%</b>, <b>6 strikes → −15%</b>, <b>9 strikes → vetado del equipo</b> por lo que resta del lanzamiento.</li>
     <li>Solo <b>director, manager o admin</b> pueden registrar una sanción: elegís la persona, si es advertencia o strike, la fecha y el motivo. Quién la cargó queda guardado solo, no se elige a mano.</li>
     <li>Todo el equipo ve el <b>Estado por persona</b> (advertencias activas, strikes efectivos y consecuencia actual) y el <b>Historial</b> completo con fecha, motivo y quién la registró.</li>
-    <li>El ajuste real del % de comisión o la baja del equipo <b>no lo hace el sistema solo</b> — la página te muestra el estado, pero el manager lo aplica a mano en Comisiones.</li>
+    <li>El ajuste real del % de comisión o la baja del equipo <b>no lo hace el sistema solo</b> — la página te muestra el estado, pero el manager lo aplica a mano fuera del CRM.</li>
     <li>Todo se resetea a cero con cada lanzamiento nuevo.</li>
   </ol></div>
 
@@ -1498,67 +489,20 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
   <h2 id="g_man">Rol Manager</h2>
   <div class="gcard role manager"><span class="tag manager">Manager</span><h3>Configurar y controlar</h3>
   <ol class="steps">
-    <li><b>Comisiones → Lanzamientos</b>: numerá el actual (ej: N° 7) o creá uno nuevo.</li>
-    <li><b>Comisiones → Equipo · roles y comisiones</b>: rol + % setter / % closer de cada uno.<div class="d">Si el % está en 0, esa persona no genera comisión.</div></li>
-    <li><b>A pagar por origen</b>: comisiones a pagar por cada lanzamiento / funnel / referidos.</li>
-    <li>Tocá el <b>nombre</b> de una persona → su detalle → marcá comisiones <b>pagadas</b> línea por línea, o cargá un <b>pago manual</b> (monto suelto, parcial o total) que se resta directo del pendiente.</li>
-    <li>Sos el único que puede <b>editar y borrar</b> Cuotas, Seguimientos, Reportes de llamada y KPIs (botones "Editar"/"Borrar" en cada tabla, solo visibles para vos). Leads, Ventas y Señas ya se podían editar/borrar desde antes.</li>
-    <li><b>Strikes</b>: junto con los directores, sos quien registra advertencias y strikes del equipo (ver sección aparte).</li>
+    <li><b>Equipo → Lanzamientos</b>: numerá el actual (ej: N° 7) o creá uno nuevo cuando arranque el siguiente — ahí quedan KPIs y Contexto de leads.</li>
+    <li><b>Equipo → Roles</b>: asignale rol a cada persona nueva (setter / closer / director / manager / admin).</li>
+    <li>Sos el único que puede <b>editar y borrar</b> registros de KPIs de cualquier asesor (botón "Borrar" en la tabla de Admin).</li>
+    <li><b>Strikes</b>: junto con los directores, sos quien registra advertencias y strikes del equipo (ver sección aparte) — el ajuste real de comisión o la baja del equipo lo aplicás vos a mano, fuera del CRM.</li>
   </ol></div>
-
-  <h2 id="g_flu">Flujos rápidos</h2>
-  <div class="gcard"><h3>💵 Cargar una venta</h3><ol class="steps">
-    <li><b>Ventas → + Cargar venta</b> (o desde el Reporte si cerraste la call).</li>
-    <li>Lead (o nombre manual) + <b>Canal</b>.</li>
-    <li>Elegí <b>Setter</b> y <b>Closer</b> (comisiones).</li>
-    <li><b>Forma de pago</b>, <b>Ticket</b>, <b>Dinero que pagó</b> y las cuotas (monto + vencimiento).</li>
-    <li><b>Base comisionable:</b> si cobrás recargo/interés, poné el precio base (ej: 500). Si no hay recargo, dejalo vacío.</li>
-    <li>Adjuntá el <b>comprobante</b> y guardá. ✅</li>
-  </ol></div>
-  <div class="grid2">
-    <div class="gcard" style="margin:0"><h3>🧾 Seña → venta</h3><ol class="steps">
-      <li>Registrá la seña (monto + comprobante + setter/closer).</li>
-      <li>Al cargar la venta, en "Seña a aplicar" elegís esa seña.</li>
-      <li>Al cobrar la <b>1ª cuota</b>, la seña suma al cash collected.</li>
-    </ol></div>
-    <div class="gcard" style="margin:0"><h3>✅ Marcar comisión pagada</h3><ol class="steps">
-      <li><b>Comisiones</b> → tocá el <b>nombre</b> de la persona.</li>
-      <li>Detalle por venta: Ganado / Pagado / Pendiente.</li>
-      <li>Tocá <b>"pagar"</b> cuando le transferiste esa línea puntual.</li>
-    </ol></div>
-  </div>
-  <div class="gcard"><h3>💸 Registrar un pago parcial (sin marcar líneas)</h3>
-    <p class="lead2">Para cuando le pagás un monto suelto a alguien y no querés reconciliar línea por línea (ej: le debés $400 y le transferís $150 hoy).</p>
-    <ol class="steps">
-      <li><b>Comisiones</b> → tocá el <b>nombre</b> de la persona.</li>
-      <li>Abajo del detalle, en <b>"Pagos manuales"</b>: cargá el monto (y una nota si querés) → <b>Registrar pago</b>.</li>
-      <li>El <b>Pendiente</b> de esa persona baja automáticamente ese monto. Podés cargar varios pagos hasta llegar a $0, o quitar uno si te equivocaste.</li>
-    </ol></div>
-  <div class="gcard"><h3>📅 Lead que se agendó solo (sin setter)</h3>
-    <div class="flow"><span class="st">Closer: Cargar agenda</span><span class="ar">→</span><span class="st">asigna Asesor (si sabe cuál)</span><span class="ar">→</span><span class="st">Setter: Mis agendas</span><span class="ar">→</span><span class="st">completa contexto</span></div>
-    <p class="lead2" style="margin-top:8px">El closer no pierde la agenda aunque no tenga contexto: la carga igual, vacía si hace falta. El setter la ve en "Mis agendas" marcada como <b style="color:var(--ink)">"sin contexto"</b> y la completa cuando puede, antes de la llamada.</p></div>
-  <div class="gcard"><h3>✏️ Corregir algo mal cargado</h3>
-    <div class="flow"><span class="st">Ventas / Señas</span><span class="ar">→</span><span class="st">clic en la fila</span><span class="ar">→</span><span class="st">editar o eliminar</span></div>
-    <p class="lead2" style="margin-top:8px">Podés cambiar montos, moneda, cuotas, reemplazar comprobante o eliminar. <b style="color:var(--ink)">Ojo:</b> editar una venta regenera sus cuotas.</p></div>
 
   <h2 id="g_glo">Glosario</h2>
   <div class="gcard"><table>
     <tr><th>Término</th><th>Qué significa</th></tr>
-    <tr><td><b>Lead</b></td><td class="m">Persona interesada que estás trabajando.</td></tr>
-    <tr><td><b>Ticket</b></td><td class="m">Precio total de la venta.</td></tr>
-    <tr><td><b>Cash collected</b></td><td class="m">Plata que ya entró (cuotas cobradas + señas activadas).</td></tr>
-    <tr><td><b>Facturación</b></td><td class="m">Total vendido (suma de tickets), haya entrado o no.</td></tr>
-    <tr><td><b>Seña</b></td><td class="m">Reserva del cliente. No cuenta hasta la 1ª cuota.</td></tr>
-    <tr><td><b>Ganado</b></td><td class="m">Comisión que la persona ya se ganó (sobre lo cobrado).</td></tr>
-    <tr><td><b>Pendiente</b></td><td class="m">Comisión ganada que todavía no se pagó.</td></tr>
-    <tr><td><b>Canal</b></td><td class="m">Origen de la venta: Lanzamiento, Funnel o Referido.</td></tr>
-    <tr><td><b>Moneda</b></td><td class="m">USD, ARS o EUR. Cada moneda se trackea completamente por separado — nunca se convierte ni se mezcla con otra en ningún total.</td></tr>
-    <tr><td><b>Base comisionable</b></td><td class="m">Tope (en la misma moneda de la venta) sobre el que se calculan las comisiones. El recargo/interés por encima de la base no comisiona.</td></tr>
-    <tr><td><b>Contexto para el closer</b></td><td class="m">Situación, objetivos y dolores del lead que carga el setter al agendar — el closer lo ve en Triage.</td></tr>
-    <tr><td><b>Pago manual</b></td><td class="m">Monto suelto que registrás para una persona y se resta directo de su comisión pendiente, sin marcar líneas de venta.</td></tr>
+    <tr><td><b>Lead</b></td><td class="m">Persona interesada que el equipo está trabajando.</td></tr>
+    <tr><td><b>Lanzamiento</b></td><td class="m">Período de venta activo (ej: 2.0). KPIs y Contexto de leads quedan agrupados por lanzamiento.</td></tr>
+    <tr><td><b>Contexto</b></td><td class="m">Situación, objetivos y dolores de un lead — lo carga quien lo tenga (setter o closer), no solo quien lo creó.</td></tr>
     <tr><td><b>Leve / Fluido / Potencial</b></td><td class="m">Temperatura del lead: leve = sin relación, fluido = ya hay charla real, potencial = interés directo en sumarse.</td></tr>
-    <tr><td><b>Asesor</b></td><td class="m">El setter asignado a un lead. Un closer puede cargar una agenda y asignarle un asesor sin ser él mismo ese asesor.</td></tr>
-    <tr><td><b>Cargado</b></td><td class="m">Fecha y hora exacta en que se guardó un registro en el sistema — automática, distinta de la "Fecha" de negocio (cuándo fue la venta, la llamada, etc.).</td></tr>
+    <tr><td><b>Asesor</b></td><td class="m">El setter asociado a un lead o ficha de contexto.</td></tr>
     <tr><td><b>Advertencia</b></td><td class="m">Falta leve. Cada 3 se convierten solas en 1 strike.</td></tr>
     <tr><td><b>Strike</b></td><td class="m">Falta grave (o el resultado de acumular 3 advertencias). A los 3 strikes se descuenta comisión; a los 9, vetado del equipo.</td></tr>
   </table></div>
