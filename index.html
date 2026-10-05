@@ -108,7 +108,7 @@ const ESTADOS=['Nuevo','Contactado','Confirmó clase','Asistió','Agendó','Cerr
 const TEMPS=['fluido','potencial','leve'];const MONEDAS=['USD','ARS','EUR'];const FORMAS=['Un pago','2 cuotas','3 cuotas'];const PAGE=50
 const root=document.getElementById('root')
 let sb=null,me=null,myProfile=null
-let state={page:0,q:'',temp:'',estado:'',mine:false,total:0,leads:[],setters:[],lanz:null,clases:[]}
+let state={page:0,q:'',temp:'',estado:'',mine:false,total:0,leads:[],setters:[],lanz:null,clases:[],ctxQ:'',ctxFilter:'',fichas:[]}
 const esc=s=>(s??'').toString().replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
 const initials=n=>(n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase()
 const isMgr=()=>myProfile&&(myProfile.rol==='manager'||myProfile.rol==='admin')
@@ -182,7 +182,7 @@ async function ensureClases(){if(!state.lanz)return
 // Tercer elemento de cada item = roles (aparte de manager/admin, que siempre ven todo) que lo ven.
 // null = todos los roles. [] = solo manager/admin.
 const NAV=[
-  {g:null,items:[['#/panel','Panel general',null],['#/calendario','Calendario',null],['#/agendas','Todas las agendas',[]],['#/strikes','Strikes',null],['#/guia','Guía',null]]},
+  {g:null,items:[['#/panel','Panel general',null],['#/calendario','Calendario',null],['#/agendas','Todas las agendas',[]],['#/contexto','Contexto de leads',['setter','closer']],['#/strikes','Strikes',null],['#/guia','Guía',null]]},
   {g:'Setter',items:[['#/leads','Leads',['setter']],['#/nuevo','Nuevo lead',['setter']],['#/importar','Cargar agenda',['setter','closer']],['#/basecsv','Mi base',['setter']],['#/misagendas','Mis agendas',['setter']],['#/kpis','KPIs',['setter']],['#/sinasesor','Leads sin asesor',[]]]},
   {g:'Closer',items:[['#/triage','Triage',['closer']],['#/reporte','Reporte de llamadas',['closer']],['#/grilla','Grilla de reportes',['closer','setter']],['#/noasignados','Agendas sin closer',[]]]},
   {g:'Ventas',items:[['#/ventas','Ventas',null],['#/senas','Señas',null]]},
@@ -200,7 +200,7 @@ function renderShell(){
   document.getElementById('so').onclick=()=>sb.auth.signOut();window.onhashchange=route}
 function setActive(){root.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('on',a.dataset.h===location.hash))}
 function route(){setActive();const h=location.hash
-  const map={'#/panel':renderPanel,'#/calendario':renderCalendario,'#/agendas':renderAgendas,'#/guia':renderGuia,'#/strikes':renderStrikes,'#/leads':renderLeads,'#/nuevo':()=>openLeadModal(),'#/importar':renderImport,'#/basecsv':renderImportarBase,'#/misagendas':renderMisAgendas,'#/sinasesor':renderSinAsesor,'#/kpis':renderKpis,'#/triage':renderTriage,'#/reporte':renderReporte,'#/grilla':renderGrilla,'#/noasignados':renderNoAsignados,'#/ventas':renderVentas,'#/senas':renderSenas,'#/comisiones':renderComisiones,'#/facturacion':renderFacturacion,'#/marketing':renderMarketing,'#/cobros':renderCobros}
+  const map={'#/panel':renderPanel,'#/calendario':renderCalendario,'#/agendas':renderAgendas,'#/contexto':renderContexto,'#/guia':renderGuia,'#/strikes':renderStrikes,'#/leads':renderLeads,'#/nuevo':()=>openLeadModal(),'#/importar':renderImport,'#/basecsv':renderImportarBase,'#/misagendas':renderMisAgendas,'#/sinasesor':renderSinAsesor,'#/kpis':renderKpis,'#/triage':renderTriage,'#/reporte':renderReporte,'#/grilla':renderGrilla,'#/noasignados':renderNoAsignados,'#/ventas':renderVentas,'#/senas':renderSenas,'#/comisiones':renderComisiones,'#/facturacion':renderFacturacion,'#/marketing':renderMarketing,'#/cobros':renderCobros}
   ;(map[h]||renderPanel)()}
 function head(sub,title,actions=''){return `<div class="top"><div><div class="sub">${sub}</div><h1>${title}</h1></div><div class="grow"></div>${actions}</div>`}
 
@@ -343,6 +343,74 @@ async function openLeadModal(lead){
     else if(location.hash==='#/triage')renderTriage()
     else location.hash='#/leads'}
   if(lead)g('m_del').onclick=async()=>{if(confirm('¿Eliminar este lead?')){await sb.from('leads').delete().eq('id',lead.id);toast('Eliminado');ov.remove();if(location.hash==='#/leads'){loadLeads();loadFunnel()}}}}
+
+/* ================= CONTEXTO DE LEADS (setters + closers) ================= */
+// Tabla aparte (`fichas_contexto`), sin agenda ni campos de embudo: el closer
+// carga lo mínimo (nombre + lo que tenga) y cualquier setter/closer suma
+// Situación/Objetivos/Dolores después. "Con/sin contexto" se deriva de si
+// esos 3 campos están vacíos — no hay un estado separado que mantener.
+async function renderContexto(){const v=view()
+  v.innerHTML=head('SETTERS Y CLOSERS','Contexto de leads',`<button class="btn primary" id="cx_new">+ Nuevo</button>`)
+    +`<div class="card"><p class="cdesc">Cuando un closer tiene una llamada y no tiene contexto del lead, lo carga acá con lo que tenga (nombre, teléfono). El setter que lo trabajó entra y completa Situación/Objetivos/Dolores — y cualquiera puede sumar algo más después de la llamada.</p></div>
+    <div class="tb"><input class="inp search" id="cx_q" placeholder="Buscar nombre o teléfono…" value="${esc(state.ctxQ)}"/>
+      <span class="pill ${!state.ctxFilter?'on':''}" data-cf="">Todos</span>
+      <span class="pill ${state.ctxFilter==='sin'?'on':''}" data-cf="sin">Sin contexto</span>
+      <span class="pill ${state.ctxFilter==='con'?'on':''}" data-cf="con">Con contexto</span></div>
+    <div class="tablewrap"><table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Asesor</th><th>Contexto</th><th>Cargado por</th><th>Actualizado</th></tr></thead><tbody id="cx_rows"><tr><td colspan="6" class="empty">Cargando…</td></tr></tbody></table></div>`
+  v.querySelector('#cx_new').onclick=()=>openContextoModal()
+  v.querySelector('#cx_q').oninput=e=>{clearTimeout(window._cxt);state.ctxQ=e.target.value;window._cxt=setTimeout(loadContexto,300)}
+  v.querySelectorAll('[data-cf]').forEach(p=>p.onclick=()=>{state.ctxFilter=p.dataset.cf;loadContexto()})
+  loadContexto()}
+async function loadContexto(){const rows=document.getElementById('cx_rows');if(!rows)return
+  let q=sb.from('fichas_contexto').select('*').order('updated_at',{ascending:false}).limit(300)
+  if(state.lanz)q=q.eq('lanzamiento_id',state.lanz.id)
+  if(state.ctxQ)q=q.or(`nombre.ilike.%${state.ctxQ}%,telefono.ilike.%${state.ctxQ}%`)
+  const{data,error}=await q
+  if(error){rows.innerHTML=`<tr><td colspan="6" class="empty">Error: ${esc(error.message)}</td></tr>`;return}
+  const tiene=f=>!!(f.situacion||f.objetivos||f.dolor)
+  let filas=data||[]
+  if(state.ctxFilter==='sin')filas=filas.filter(f=>!tiene(f));else if(state.ctxFilter==='con')filas=filas.filter(tiene)
+  state.fichas=filas
+  rows.innerHTML=filas.length?filas.map(f=>`<tr class="clk" data-id="${f.id}"><td class="nm">${esc(f.nombre)}</td><td>${esc(f.telefono||'—')}</td><td>${f.asesor_id?esc(nameOf(f.asesor_id)):'<span class="sub2">— sin asignar</span>'}</td><td><span class="chip ${tiene(f)?'cobrado':'pendiente'}">${tiene(f)?'con contexto':'sin contexto'}</span></td><td class="sub2">${esc(nameOf(f.creado_por)||'—')}</td><td class="sub2">${fmtDate(f.updated_at)}</td></tr>`).join(''):`<tr><td colspan="6" class="empty">No hay leads cargados con estos filtros.</td></tr>`
+  rows.querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>openContextoModal(filas.find(x=>x.id===tr.dataset.id)))}
+function openContextoModal(f){
+  const l=f||{nombre:'',telefono:'',asesor_id:'',situacion:'',objetivos:'',dolor:''}
+  const ov=document.createElement('div');ov.className='overlay'
+  ov.innerHTML=`<div class="modal"><h2>${f?'Editar contexto':'Nuevo · lead que necesita contexto'}</h2>
+    <div class="row2"><div class="field"><label>Nombre *</label><input class="inp" id="cx_nombre" value="${esc(l.nombre)}"/></div><div class="field"><label>Teléfono</label><input class="inp" id="cx_telefono" type="tel" value="${esc(l.telefono||'')}" placeholder="+54 9 ..."/></div></div>
+    <div class="field"><label>Asesor <span class="sub2" style="font-weight:400">· el setter que lo trabajó, si se sabe</span></label><select id="cx_asesor"><option value="">— sin asignar —</option>${state.setters.filter(s=>s.rol==='setter').map(s=>`<option value="${s.id}" ${l.asesor_id===s.id?'selected':''}>${esc(s.nombre)}</option>`).join('')}</select><div class="sub2" id="cx_asesor_hint" style="margin-top:6px;min-height:15px"></div></div>
+    <div class="field"><label>Situación actual</label><textarea class="inp" id="cx_situacion" rows="2">${esc(l.situacion||'')}</textarea></div>
+    <div class="field"><label>Objetivos</label><textarea class="inp" id="cx_objetivos" rows="2">${esc(l.objetivos||'')}</textarea></div>
+    <div class="field"><label>Dolores</label><textarea class="inp" id="cx_dolor" rows="2">${esc(l.dolor||'')}</textarea></div>
+    <div class="actions">${f?'<button class="btn danger" id="cx_del">Eliminar</button>':''}<div class="grow"></div><button class="btn ghost" id="cx_cancel">Cancelar</button><button class="btn primary" id="cx_save">Guardar</button></div></div>`
+  document.body.appendChild(ov);const g=id=>ov.querySelector('#'+id)
+  ov.onclick=e=>{if(e.target===ov)ov.remove()};g('cx_cancel').onclick=()=>ov.remove()
+  // Al tipear el teléfono, busca si ese número ya es un lead en el CRM y
+  // muestra/autocompleta su asesor — así el closer no tiene que adivinar.
+  let asesorTouched=!!l.asesor_id,telTimer
+  g('cx_asesor').onchange=()=>asesorTouched=true
+  g('cx_telefono').oninput=()=>{clearTimeout(telTimer);telTimer=setTimeout(buscarPorTelefono,350)}
+  async function buscarPorTelefono(){
+    const hint=g('cx_asesor_hint'),d=g('cx_telefono').value.replace(/\D/g,'').slice(-8)
+    if(!state.lanz||d.length<6){hint.textContent='';return}
+    hint.textContent='Buscando…'
+    const{data}=await sb.from('leads').select('asesor_id').eq('lanzamiento_id',state.lanz.id).or(`telefono.ilike.%${d}%,contacto.ilike.%${d}%`).limit(20)
+    if(g('cx_telefono').value.replace(/\D/g,'').slice(-8)!==d)return
+    if(!data||!data.length){hint.textContent='Lead nuevo — no está en la base del CRM todavía.';return}
+    const asesores=[...new Set(data.map(x=>x.asesor_id).filter(Boolean))]
+    if(asesores.length===1){hint.innerHTML=`→ Ya está en la base, trabajado por <b style="color:var(--ink)">${esc(nameOf(asesores[0]))}</b>`
+      if(!asesorTouched)g('cx_asesor').value=asesores[0]}
+    else if(asesores.length>1)hint.textContent='→ Hay más de un lead con ese teléfono, con distintos asesores — revisalo a mano.'
+    else hint.textContent='→ Ya está en la base, pero sin asesor asignado.'}
+  if(l.telefono)buscarPorTelefono()
+  g('cx_save').onclick=async()=>{const nombre=g('cx_nombre').value.trim();if(!nombre){toast('Poné un nombre');return}
+    const p={nombre,telefono:g('cx_telefono').value.trim()||null,asesor_id:g('cx_asesor').value||null,situacion:g('cx_situacion').value.trim()||null,objetivos:g('cx_objetivos').value.trim()||null,dolor:g('cx_dolor').value.trim()||null,lanzamiento_id:state.lanz?state.lanz.id:null,updated_at:new Date().toISOString()}
+    const res=f?await sb.from('fichas_contexto').update(p).eq('id',f.id):await sb.from('fichas_contexto').insert({...p,creado_por:me.id}).select().single()
+    if(res.error){toast('Error: '+res.error.message);return}
+    toast('Guardado ✓');ov.remove();if(location.hash==='#/contexto')loadContexto()}
+  if(f)g('cx_del').onclick=async()=>{if(!confirm('¿Eliminar esta ficha?'))return
+    const r=await delRow('fichas_contexto',f.id);if(!r.ok){toast(r.msg);return}
+    toast('Eliminado ✓');ov.remove();if(location.hash==='#/contexto')loadContexto()}}
 
 /* ================= IMPORT ================= */
 function renderImport(){const showAsesor=isMgr()||myProfile.rol==='closer'
@@ -1351,6 +1419,7 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
     <a onclick="document.getElementById('g_clo').scrollIntoView({behavior:'smooth'})">Closer</a>
     <a onclick="document.getElementById('g_cob').scrollIntoView({behavior:'smooth'})">Ventas / Cobros</a>
     <a onclick="document.getElementById('g_str').scrollIntoView({behavior:'smooth'})">Strikes</a>
+    <a onclick="document.getElementById('g_ctx').scrollIntoView({behavior:'smooth'})">Contexto de leads</a>
     <a onclick="document.getElementById('g_man').scrollIntoView({behavior:'smooth'})">Manager</a>
     <a onclick="document.getElementById('g_flu').scrollIntoView({behavior:'smooth'})">Flujos</a>
     <a onclick="document.getElementById('g_glo').scrollIntoView({behavior:'smooth'})">Glosario</a>
@@ -1414,6 +1483,16 @@ function renderGuia(){view().innerHTML=head('AYUDA','Guía de uso')+`
     <li>Todo el equipo ve el <b>Estado por persona</b> (advertencias activas, strikes efectivos y consecuencia actual) y el <b>Historial</b> completo con fecha, motivo y quién la registró.</li>
     <li>El ajuste real del % de comisión o la baja del equipo <b>no lo hace el sistema solo</b> — la página te muestra el estado, pero el manager lo aplica a mano en Comisiones.</li>
     <li>Todo se resetea a cero con cada lanzamiento nuevo.</li>
+  </ol></div>
+
+  <h2 id="g_ctx">Contexto de leads</h2>
+  <div class="gcard"><h3>Para setters y closers, sin agenda de por medio</h3>
+  <p class="lead2">El CRM ya no se usa para trackear agendas ni cargar ventas — solo KPIs, Strikes y esto. Es el lugar para que un closer que tiene una llamada sin contexto no se quede trabado, y cualquiera lo pueda completar.</p>
+  <ol class="steps">
+    <li><b>Closer: + Nuevo</b> → cargá lo que tengas: nombre (lo único obligatorio), teléfono, y el asesor si sabés qué setter trabajó a esa persona.</li>
+    <li><b>Setter (o cualquiera)</b>: abrí las que digan <span class="chip pendiente">sin contexto</span> y completá Situación actual, Objetivos y Dolores.</li>
+    <li>No hace falta que quede "cerrado": tanto el setter como el closer pueden volver a entrar y sumar algo más después de la llamada.</li>
+    <li>Usá los filtros <b>Sin contexto / Con contexto</b> para encontrar rápido lo que falta completar.</li>
   </ol></div>
 
   <h2 id="g_man">Rol Manager</h2>
